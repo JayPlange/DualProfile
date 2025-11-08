@@ -1,4 +1,4 @@
-## v0.2.0 — 2025-10-15
-- Replace DOMContentLoaded with MutationObserver for header detection
-- Add 500ms reconciliation alarm loop (dp-sync-retry)
-- Fix: photos not updating on chat navigation
+## v0.3.0 — 2025-11-08
+- Fix: Chrome/Edge extensionId collision via phoneHash primary key
+- Fix: self-row guard — prevent assigner's photo leaking to own row
+- Fix: cross-contact bleed on rapid chat switching
