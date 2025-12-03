@@ -1,4 +1,4 @@
-## v0.3.0 — 2025-11-08
-- Fix: Chrome/Edge extensionId collision via phoneHash primary key
-- Fix: self-row guard — prevent assigner's photo leaking to own row
-- Fix: cross-contact bleed on rapid chat switching
+## v0.3.1 — 2025-12-03
+- Fix: group photo leak in group chat headers
+- Fix: self-row isolation — own contact entry no longer triggers injection
+- Fix: bleed on rapid contact switching
