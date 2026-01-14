@@ -1,4 +1,6 @@
-## v0.3.1 — 2025-12-03
-- Fix: group photo leak in group chat headers
-- Fix: self-row isolation — own contact entry no longer triggers injection
-- Fix: bleed on rapid contact switching
+## v1.0.0 — 2026-01-14
+- Initial Chrome Web Store submission
+- Manifest V3 service worker architecture
+- Convex real-time backend (keen-goldfinch-408.convex.cloud)
+- Cloudinary photo upload + CDN delivery
+- Lemon Squeezy payments: Free / Pro / Founder tiers
