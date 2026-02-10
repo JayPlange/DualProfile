@@ -1,6 +1,4 @@
-## v1.0.0 — 2026-01-14
-- Initial Chrome Web Store submission
-- Manifest V3 service worker architecture
-- Convex real-time backend (keen-goldfinch-408.convex.cloud)
-- Cloudinary photo upload + CDN delivery
-- Lemon Squeezy payments: Free / Pro / Founder tiers
+## v1.0.1 — 2026-02-10
+- Fix: overlay persists after network drop and WA reconnect
+- Fix: notification thumbnail not updating after photo change
+- Add: chrome.alarms justification for CWS review
