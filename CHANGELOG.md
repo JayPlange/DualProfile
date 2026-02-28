@@ -1,4 +1,5 @@
-## v1.0.1 — 2026-02-10
-- Fix: overlay persists after network drop and WA reconnect
-- Fix: notification thumbnail not updating after photo change
-- Add: chrome.alarms justification for CWS review
+## v1.0.2 — 2026-02-28
+- Overhaul: onboarding flow restructured (88% drop-off fix)
+- Inline phone number capture on step 1
+- Progress stepper UI added
+- Clearer activation copy across all steps
