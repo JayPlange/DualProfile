@@ -1,5 +1,6 @@
-## v1.0.2 — 2026-02-28
-- Overhaul: onboarding flow restructured (88% drop-off fix)
-- Inline phone number capture on step 1
-- Progress stepper UI added
-- Clearer activation copy across all steps
+## v1.0.3 — 2026-03-20
+- i18n: 9 languages (EN/ES/FR/PT/DE/HI/AR/ZH/SW)
+- 274 translation keys, parity-verified
+- dpT() for popup strings, dpCsT() for content script injections
+- Language persisted in chrome.storage.local
+- Language selector in onboarding step 1
