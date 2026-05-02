@@ -1,6 +1,7 @@
-## v1.0.4 — 2026-04-18
-- feat: 3-day trial system (server-side, reinstall-proof)
-- Convex schema: trialStatus state machine (not_started→active→expired)
-- getEffectiveTier helper in assignments.ts
-- assignContact returns { trialJustActivated, effectiveTier, trialEndsAt }
-- getTrialStatus query + expireTrial mutation in users.ts
+## v1.0.5 — 2026-05-02
+- Trial status bar: setup / active / expiring / expired states
+- Countdown timer ticks every minute, calls expireTrial at zero
+- showTrialStartedToast — 6s auto-dismiss on first activation
+- updateLockedContacts — freeze UI with lock icon + banner
+- Three upgrade modal variants (standard / working / expired)
+- All trial copy translated across all 9 languages
