@@ -1,7 +1,10 @@
-## v1.0.5 — 2026-05-02
-- Trial status bar: setup / active / expiring / expired states
-- Countdown timer ticks every minute, calls expireTrial at zero
-- showTrialStartedToast — 6s auto-dismiss on first activation
-- updateLockedContacts — freeze UI with lock icon + banner
-- Three upgrade modal variants (standard / working / expired)
-- All trial copy translated across all 9 languages
+## v1.0.6 — 2026-05-20
+- Trial notification system (chrome.notifications + chrome.alarms)
+- Day 2 (T+48h): personalised with first contact name
+  Title: '{name} is waiting for the right photo.'
+  Body: 'Your trial ends tomorrow. After that, she\'ll see the default you.'
+- Day 3 (T+72h): warm expiry framing
+  Title: 'You built something worth keeping.'
+  Body: 'It\'s still there, just paused. One tap to bring it back.'
+- Fallback: non-personalised copy if contactMap empty
+- All strings in DP_I18N, 9 languages
