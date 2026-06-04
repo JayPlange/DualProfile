@@ -2513,6 +2513,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // "It's working" variant — shown right after first contact syncs successfully
     const isWorking = variant === 'working';
+    if (isWorking) launchConfetti();
     const isExpired = variant === 'expired';
 
     // Count frozen contacts for expired variant
@@ -3000,3 +3001,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('pagehide', () => stopRefreshPoller());
   }
 });
+
+// ── Confetti burst for "They can see you" moment ─────────────────────────────
+function launchConfetti() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99999;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  canvas.width = document.body.offsetWidth;
+  canvas.height = document.body.offsetHeight;
+
+  const COLORS = ['#25D366','#00B4D8','#FFD166','#EF476F','#06D6A0','#118AB2','#FFB347'];
+  const pieces = Array.from({ length: 80 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height * 0.4 - canvas.height * 0.1,
+    w: Math.random() * 8 + 4,
+    h: Math.random() * 4 + 2,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rotation: Math.random() * Math.PI * 2,
+    vx: (Math.random() - 0.5) * 3,
+    vy: Math.random() * 2 + 1.5,
+    vr: (Math.random() - 0.5) * 0.15,
+    opacity: 1,
+  }));
+
+  let frame = 0;
+  const MAX_FRAMES = 90;
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rotation += p.vr;
+      p.vy += 0.05; // gravity
+      p.opacity = Math.max(0, 1 - frame / MAX_FRAMES);
+      ctx.save();
+      ctx.globalAlpha = p.opacity;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    frame++;
+    if (frame < MAX_FRAMES) {
+      requestAnimationFrame(draw);
+    } else {
+      canvas.remove();
+    }
+  }
+  requestAnimationFrame(draw);
+}
