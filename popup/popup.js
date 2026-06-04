@@ -649,6 +649,64 @@ document.addEventListener('DOMContentLoaded', async () => {
         toggleDevModePanel();
       });
     }
+
+    // ── Trial simulation buttons (dev panel) ──────────────────────────────────
+    const devFeedback = document.getElementById('devTrialFeedback');
+    function devFb(msg) { if (devFeedback) devFeedback.textContent = msg; }
+
+    const devTrialStart = document.getElementById('devTrialStart');
+    if (devTrialStart) {
+      devTrialStart.addEventListener('click', async () => {
+        const endsAt = Date.now() + (2 * 60 * 1000); // 2 minutes
+        trialState = { effectiveTier: 'trial', trialStatus: 'active', trialEndsAt: endsAt, msRemaining: 2 * 60 * 1000 };
+        await chrome.storage.local.set({ trialState });
+        isPro = true;
+        updateTrialBar();
+        startTrialCountdown();
+        chrome.runtime.sendMessage({ type: 'SCHEDULE_TRIAL_NOTIFICATIONS', trialEndsAt: endsAt }, () => {});
+        devFb('✅ Trial started — expires in 2 minutes');
+      });
+    }
+
+    const devTrialWarn = document.getElementById('devTrialWarn');
+    if (devTrialWarn) {
+      devTrialWarn.addEventListener('click', async () => {
+        const endsAt = Date.now() + (30 * 1000); // 30 seconds
+        trialState = { effectiveTier: 'trial', trialStatus: 'active', trialEndsAt: endsAt, msRemaining: 30 * 1000 };
+        await chrome.storage.local.set({ trialState });
+        isPro = true;
+        updateTrialBar();
+        startTrialCountdown();
+        devFb('⚠️ Warning state — 30 seconds left');
+      });
+    }
+
+    const devTrialExpire = document.getElementById('devTrialExpire');
+    if (devTrialExpire) {
+      devTrialExpire.addEventListener('click', async () => {
+        const endsAt = Date.now() - 1000; // already expired
+        trialState = { effectiveTier: 'free', trialStatus: 'expired', trialEndsAt: endsAt, msRemaining: 0 };
+        await chrome.storage.local.set({ trialState });
+        isPro = false;
+        updateTrialBar();
+        updateLockedContacts();
+        devFb('✕ Trial expired — freeze UI active');
+      });
+    }
+
+    const devTrialReset = document.getElementById('devTrialReset');
+    if (devTrialReset) {
+      devTrialReset.addEventListener('click', async () => {
+        trialState = { effectiveTier: 'free', trialStatus: 'not_started', trialEndsAt: null, msRemaining: null };
+        await chrome.storage.local.set({ trialState });
+        await chrome.alarms.clear('dp-trial-warn');
+        await chrome.alarms.clear('dp-trial-expire');
+        isPro = false;
+        updateTrialBar();
+        devFb('↺ Trial reset to not_started');
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
   }
 
   // ===================== SIMPLE TIER FUNCTIONS =====================
