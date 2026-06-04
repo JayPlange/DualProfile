@@ -403,6 +403,17 @@
             <input type="radio" name="devTier" value="pro"> PRO (unlimited)
           </label>
         </div>
+
+        <div class="dev-trial-section">
+          <p class="dev-desc" style="margin-top:10px;">Trial Simulation</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+            <button class="dev-trial-btn" id="devTrialStart">▶ Start trial (2 min)</button>
+            <button class="dev-trial-btn" id="devTrialWarn">⚠ Warn state (30s left)</button>
+            <button class="dev-trial-btn" id="devTrialExpire">✕ Expire now</button>
+            <button class="dev-trial-btn" id="devTrialReset">↺ Reset trial</button>
+          </div>
+          <p id="devTrialFeedback" style="font-size:11px;color:#aaa;margin-top:6px;"></p>
+        </div>
       </div>
 
       <!-- Pro Features Section -->
