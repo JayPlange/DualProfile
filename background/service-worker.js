@@ -456,6 +456,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleGetUserTier(sendResponse);
       return true;
 
+    case 'GET_TRIAL_STATUS':
+      handleGetTrialStatus(sendResponse);
+      return true;
+
+    case 'EXPIRE_TRIAL':
+      handleExpireTrial(sendResponse);
+      return true;
+
     case 'SET_DEV_MODE':
       handleSetDevMode(message, sendResponse);
       return true;
@@ -566,6 +574,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleDeactivateLicense(sendResponse);
       return true;
 
+    case 'SCHEDULE_TRIAL_NOTIFICATIONS':
+      handleScheduleTrialNotifications(message, sendResponse);
+      return true;
+
     default:
       sendResponse({ success: false, error: 'Unknown message type' });
   }
@@ -626,22 +638,6 @@ async function handleAssignContact(message, sendResponse) {
       if (hist.length > 50) hist.length = 50;
       await swSet({ assignmentHistory: hist });
     } catch(e) {}
-
-    // ── Trial notification scheduling ──────────────────────────────────────
-    // After a successful assignment, check if trial is active and schedule
-    // the Day 2 warning + Day 3 expiry notifications if not already scheduled.
-    try {
-      const trialStored = await chrome.storage.local.get('trialState');
-      const trialState = trialStored.trialState;
-      if (trialState && trialState.trialStatus === 'active' && trialState.trialEndsAt) {
-        const existingWarn = await chrome.alarms.get('dp-trial-warn');
-        if (!existingWarn) {
-          await scheduleTrialNotifications(trialState.trialEndsAt);
-        }
-      }
-    } catch(e) {
-      console.warn('[DualProfile][SW] Trial notification scheduling skipped:', e.message);
-    }
 
     sendResponse({
       success: true,
@@ -903,6 +899,62 @@ async function handleGetUserTier(sendResponse) {
       success: true,
       ...tierData
     });
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Fetch trial status from Convex, cache it locally, return to popup.
+// This is the authoritative trial state — survives extension reinstall.
+async function handleGetTrialStatus(sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+
+    if (!userId || !DualProfileConfig.isSyncEnabled()) {
+      // No Convex connection — read from local cache
+      const cached = await swGet('trialState');
+      sendResponse({ success: true, ...(cached.trialState || { trialStatus: 'not_started', effectiveTier: 'free' }) });
+      return;
+    }
+
+    const result = await ConvexClient.query('users:getTrialStatus', { userId });
+    if (!result) {
+      sendResponse({ success: true, trialStatus: 'not_started', effectiveTier: 'free' });
+      return;
+    }
+
+    // Write server state to local cache so TierSystem can read it without a Convex call
+    await swSet({ trialState: result });
+
+    // If active trial has expired server-side, mark expired locally too
+    if (result.effectiveTier === 'free' && result.trialStatus === 'active') {
+      await ConvexClient.mutation('users:expireTrial', { userId });
+      result.trialStatus = 'expired';
+      await swSet({ trialState: result });
+    }
+
+    sendResponse({ success: true, ...result });
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Called by client when countdown reaches zero — ensures server is in sync
+async function handleExpireTrial(sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (userId && DualProfileConfig.isSyncEnabled()) {
+      await ConvexClient.mutation('users:expireTrial', { userId });
+    }
+    // Update local cache
+    const cached = await swGet('trialState');
+    const ts = cached.trialState || {};
+    ts.trialStatus = 'expired';
+    ts.effectiveTier = 'free';
+    await swSet({ trialState: ts });
+    sendResponse({ success: true });
   } catch (error) {
     sendResponse({ success: false, error: error.message });
   }
@@ -1516,28 +1568,18 @@ async function handleDeactivateLicense(sendResponse) {
 
 // ── Trial Notification System ─────────────────────────────────────────────────
 // Schedules two chrome.alarms at trial activation:
-//   dp-trial-warn  → fires at T+48h (24h before expiry) — Day 2 notification
-//   dp-trial-expire → fires at T+72h (at expiry)         — Day 3 notification
+//   dp-trial-warn   → T+48h (24h before expiry) — Day 2 notification
+//   dp-trial-expire → T+72h (at expiry)          — Day 3 notification
 //
-// Alarm names are stable so re-activating or reinstalling won't double-schedule.
-// All strings are resolved at fire-time from NOTIF_I18N using dp_lang stored
+// All strings resolved at fire-time from NOTIF_I18N using dp_lang stored
 // in chrome.storage.local by onboarding. Falls back to 'en'.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Notification i18n strings (9 languages) ──────────────────────────────────
-// Keys:
-//   notif_day2_title   — uses {name} placeholder for first assigned contact
-//   notif_day2_title_fallback — used when no contact name available
-//   notif_day2_body    — uses {name} placeholder
-//   notif_day2_body_fallback
-//   notif_day3_title
-//   notif_day3_body
-// ─────────────────────────────────────────────────────────────────────────────
 const NOTIF_I18N = {
   en: {
     notif_day2_title: '{name} is waiting for the right photo.',
     notif_day2_title_fallback: 'Your contacts are used to the right version of you.',
-    notif_day2_body: 'Your trial ends tomorrow. After that, {name} will see the default you — not the one you chose.',
+    notif_day2_body: "Your trial ends tomorrow. After that, {name} will see the default you — not the one you chose.",
     notif_day2_body_fallback: 'Your trial ends tomorrow. Keep it that way.',
     notif_day3_title: 'You built something worth keeping.',
     notif_day3_body: "It's still there, just paused. One tap to bring it back.",
@@ -1608,7 +1650,6 @@ const NOTIF_I18N = {
   },
 };
 
-// ── Helper: get localised notification string ─────────────────────────────────
 async function getNotifString(key, substitutions = {}) {
   const stored = await chrome.storage.local.get('dp_lang');
   const lang = (stored.dp_lang && NOTIF_I18N[stored.dp_lang]) ? stored.dp_lang : 'en';
@@ -1619,10 +1660,6 @@ async function getNotifString(key, substitutions = {}) {
   return str;
 }
 
-// ── Helper: get first assigned contact name ───────────────────────────────────
-// Reads contactMap from chrome.storage.local, finds the entry with the
-// earliest assignedAt timestamp, and returns the contact's display name.
-// Returns null if contactMap is empty or no assignedAt timestamps exist.
 async function getFirstAssignedContactName() {
   try {
     const result = await chrome.storage.local.get('state');
@@ -1634,50 +1671,34 @@ async function getFirstAssignedContactName() {
       const t = new Date(entry.assignedAt).getTime();
       if (earliest === null || t < earliest) {
         earliest = t;
-        // Prefer entry.contactName, fall back to the key itself (could be a name)
         earliestName = entry.contactName || (!/^\d{7,15}$/.test(key) ? key : null);
       }
     }
-    // Return first name only for a personal, friendly feel (e.g. "Sarah" not "Sarah Johnson")
-    if (earliestName) {
-      return earliestName.split(' ')[0];
-    }
-    return null;
+    return earliestName ? earliestName.split(' ')[0] : null;
   } catch {
     return null;
   }
 }
 
-// ── Schedule trial notifications ──────────────────────────────────────────────
-// Called once at trial activation (from handleAssignContact when
-// trialJustActivated is true in the Convex response).
-// Idempotent — clears any existing dp-trial alarms before creating new ones.
 async function scheduleTrialNotifications(trialEndsAt) {
-  // Clear any previously scheduled trial alarms (idempotent)
   await chrome.alarms.clear('dp-trial-warn');
   await chrome.alarms.clear('dp-trial-expire');
-
   const endsAt = new Date(trialEndsAt).getTime();
-  const warnAt = endsAt - (24 * 60 * 60 * 1000); // T+48h = 24h before expiry
+  const warnAt = endsAt - (24 * 60 * 60 * 1000);
   const now = Date.now();
-
-  // Only schedule if the fire time is still in the future
   if (warnAt > now) {
     chrome.alarms.create('dp-trial-warn', { when: warnAt });
     console.debug('[DualProfile][SW] Scheduled dp-trial-warn at', new Date(warnAt).toISOString());
   }
-
   if (endsAt > now) {
     chrome.alarms.create('dp-trial-expire', { when: endsAt });
     console.debug('[DualProfile][SW] Scheduled dp-trial-expire at', new Date(endsAt).toISOString());
   }
 }
 
-// ── Fire Day 2 notification ───────────────────────────────────────────────────
 async function fireDay2Notification() {
   const contactName = await getFirstAssignedContactName();
   let title, body;
-
   if (contactName) {
     title = await getNotifString('notif_day2_title', { name: contactName });
     body  = await getNotifString('notif_day2_body',  { name: contactName });
@@ -1685,7 +1706,6 @@ async function fireDay2Notification() {
     title = await getNotifString('notif_day2_title_fallback');
     body  = await getNotifString('notif_day2_body_fallback');
   }
-
   chrome.notifications.create('dp-notif-day2', {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
@@ -1695,11 +1715,9 @@ async function fireDay2Notification() {
   });
 }
 
-// ── Fire Day 3 notification ───────────────────────────────────────────────────
 async function fireDay3Notification() {
   const title = await getNotifString('notif_day3_title');
   const body  = await getNotifString('notif_day3_body');
-
   chrome.notifications.create('dp-notif-day3', {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
@@ -1709,8 +1727,22 @@ async function fireDay3Notification() {
   });
 }
 
-// ── Notification click handler ────────────────────────────────────────────────
-// Opens the DualProfile popup tab when user clicks a notification.
+// Called from popup via SCHEDULE_TRIAL_NOTIFICATIONS message
+async function handleScheduleTrialNotifications(message, sendResponse) {
+  try {
+    const { trialEndsAt } = message;
+    if (!trialEndsAt) {
+      sendResponse({ success: false, error: 'trialEndsAt required' });
+      return;
+    }
+    await scheduleTrialNotifications(trialEndsAt);
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Notification click → bring WhatsApp Web tab into focus
 chrome.notifications.onClicked.addListener((notificationId) => {
   if (notificationId === 'dp-notif-day2' || notificationId === 'dp-notif-day3') {
     chrome.tabs.query({ url: 'https://web.whatsapp.com/*' }, (tabs) => {
