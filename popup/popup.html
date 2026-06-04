@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400, initial-scale=1.0">
+  <title>DualProfile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <!-- Dev Mode Banner (shown when testing) -->
+  <div class="dev-banner hidden" id="devBanner">
+    <span>DEV MODE: Testing as </span>
+    <span class="dev-tier" id="devTierText">PRO</span>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <img src="../icons/icon48.png" alt="DualProfile" class="header-icon">
+        <div class="logo-text">
+          <h1>DualProfile</h1>
+          <span class="tagline" data-i18n="tagline">Different <span id="devTriggerWord">photos</span> for different people</span>
+        </div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="masterToggle" checked>
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="statusBar">
+      <span class="status-dot"></span>
+      <span class="status-text" data-i18n="status_active">Extension Active</span>
+    </div>
+
+    <!-- Trial Status Bar — shown only during trial or post-trial; hidden on Pro -->
+    <div class="trial-bar hidden" id="trialBar">
+      <div class="trial-bar-left">
+        <span class="trial-badge" id="trialBadge"></span>
+        <span class="trial-bar-desc" id="trialBarDesc"></span>
+      </div>
+      <button class="trial-bar-cta hidden" id="trialBarCta"></button>
+    </div>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="preview" data-i18n="tab_preview">Preview</button>
+      <button class="tab" data-tab="photos" data-i18n="tab_photos">Photos</button>
+      <button class="tab" data-tab="contacts" data-i18n="tab_contacts">Contacts</button>
+      <button class="tab" data-tab="settings" data-i18n="tab_settings">Settings</button>
+    </nav>
+
+    <!-- Preview Tab — CENTER STAGE -->
+    <section class="tab-content active" id="previewTab">
+      <div class="preview-hero">
+        <div class="preview-hero-title" data-i18n="preview_hero_title">Live Simulation</div>
+        <div class="preview-hero-subtitle" data-i18n="preview_hero_sub">See exactly how different people see you on WhatsApp</div>
+      </div>
+
+      <div class="preview-main-controls">
+        <label class="preview-main-label" data-i18n="preview_label">Preview as:</label>
+        <select id="previewContactSelect" class="preview-main-select">
+          <option value="" data-i18n="preview_select">Select a contact...</option>
+        </select>
+        <p class="preview-main-hint" data-i18n="preview_hint">Your WhatsApp profile updates live as you switch contacts</p>
+      </div>
+
+      <p class="preview-status" id="previewStatus"></p>
+      <button class="btn-exit-preview hidden" id="exitPreviewBtn" data-i18n="preview_exit_btn">Exit Preview</button>
+
+      <!-- Tension layer — shown after preview activates -->
+      <div class="preview-tension hidden" id="previewTension">
+        <div class="tension-warning">
+          <span class="tension-icon">👀</span>
+          <div class="tension-text">
+            <strong id="tensionContactName">They're</strong> still seeing your default photo
+          </div>
+        </div>
+        <button class="tension-cta" id="tensionAssignBtn">Make this real for them →</button>
+      </div>
+
+      <!-- Invite generator — shown after tension CTA is clicked -->
+      <div class="preview-invite hidden" id="previewInvite">
+        <div class="invite-label" data-i18n="invite_choose_style">Choose your style:</div>
+
+        <!-- Style toggle -->
+        <div class="invite-style-toggle">
+          <button class="invite-style-btn active" id="inviteStyleCasual" data-style="casual">
+            Casual 😂
+          </button>
+          <button class="invite-style-btn" id="inviteStyleDirect" data-style="direct">
+            Direct
+          </button>
+        </div>
+
+        <div class="invite-message" id="inviteMessage"></div>
+
+        <div class="invite-actions">
+          <button class="invite-copy-btn" id="inviteCopyBtn" data-i18n="invite_copy_btn">Copy message</button>
+          <button class="invite-wa-btn" id="inviteWhatsAppBtn" data-i18n="invite_wa_btn">Send on WhatsApp →</button>
+        </div>
+
+        <!-- Post-send guidance -->
+        <p class="invite-guidance">
+          Tell them to open WhatsApp Web after installing — that's where it activates
+        </p>
+
+        <!-- Pending state -->
+        <div class="invite-pending hidden" id="invitePending">
+          <span class="pending-dot"></span>
+          <span id="invitePendingText">Waiting for them to install…</span>
+        </div>
+      </div>
+
+      <!-- Bridge — shown before preview activates -->
+      <div class="preview-bridge" id="previewBridge">
+        <p class="preview-bridge-text" data-i18n="preview_no_photo">Upload photos first, then select a contact above</p>
+        <button class="btn-secondary preview-bridge-btn" id="goToPhotosBtn" data-i18n="preview_go_photos">Upload photos →</button>
+      </div>
+    </section>
+
+    <!-- Photos Tab -->
+    <section class="tab-content" id="photosTab">
+      <div class="photos-grid">
+        <!-- Photo 1 -->
+        <div class="photo-card" data-photo="1">
+          <div class="photo-preview" id="photo1Preview">
+            <div class="photo-placeholder">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span data-i18n="photo_click_upload">Click to upload</span>
+            </div>
+            <img id="photo1Img" class="photo-img hidden" alt="Photo 1">
+          </div>
+          <div class="photo-info">
+            <span class="photo-label" data-i18n="photo1_label">Photo 1</span>
+            <span class="photo-contacts" id="photo1Count">0 contacts</span>
+          </div>
+          <input type="file" id="photo1Input" accept="image/*" hidden>
+          <button class="btn-remove hidden" id="photo1Remove" title="Remove photo">&times;</button>
+        </div>
+
+        <!-- Photo 2 -->
+        <div class="photo-card" data-photo="2">
+          <div class="photo-preview" id="photo2Preview">
+            <div class="photo-placeholder">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>Click to upload</span>
+            </div>
+            <img id="photo2Img" class="photo-img hidden" alt="Photo 2">
+          </div>
+          <div class="photo-info">
+            <span class="photo-label" data-i18n="photo2_label">Photo 2</span>
+            <span class="photo-contacts" id="photo2Count">0 contacts</span>
+          </div>
+          <input type="file" id="photo2Input" accept="image/*" hidden>
+          <button class="btn-remove hidden" id="photo2Remove" title="Remove photo">&times;</button>
+        </div>
+      </div>
+
+      <div class="default-photo">
+        <label data-i18n="photo_default_label">Default photo for unlisted contacts:</label>
+        <select id="defaultPhotoSelect">
+          <option value="photo1">Photo 1</option>
+          <option value="photo2">Photo 2</option>
+        </select>
+      </div>
+
+      <!-- Live Preview Section -->
+      <div class="live-preview-section">
+        <h3 data-i18n="photo_live_preview">Live Preview</h3>
+        <p class="preview-desc" data-i18n="photo_preview_desc">See your profile photo change in WhatsApp Web:</p>
+
+        <div class="preview-controls">
+          <label data-i18n="photo_preview_as">Preview as:</label>
+          <select id="previewContactSelect">
+            <option value="">Select contact...</option>
+          </select>
+        </div>
+
+        <p class="preview-status" id="previewStatus"></p>
+
+        <button class="btn-exit-preview hidden" id="exitPreviewBtn" data-i18n="exit_preview_mode">Exit Preview Mode</button>
+      </div>
+    </section>
+
+    <!-- Contacts Tab -->
+    <section class="tab-content" id="contactsTab">
+
+      <!-- P2P Health Banner — shown only when a sync problem is detected -->
+      <div class="p2p-health-banner hidden" id="p2pHealthBanner">
+        <div class="p2p-health-icon">⚠</div>
+        <div class="p2p-health-body">
+          <div class="p2p-health-msg" id="p2pHealthMsg"></div>
+          <button class="p2p-health-action" id="p2pHealthAction"></button>
+        </div>
+        <button class="p2p-health-dismiss" id="p2pHealthDismiss" title="Dismiss">✕</button>
+      </div>
+
+      <!-- WhatsApp Contacts Picker -->
+      <div class="wa-contacts-section">
+        <div class="wa-contacts-header">
+          <input type="text" id="contactSearch" placeholder="Search contacts...">
+          <button class="btn-refresh" id="refreshContactsBtn" title="Refresh contacts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="wa-contacts-list" id="waContactsList">
+          <div class="loading-state" id="contactsLoading">
+            <div class="spinner"></div>
+            <span data-i18n="contacts_loading">Loading contacts from WhatsApp...</span>
+          </div>
+          <div class="empty-state hidden" id="noWhatsApp">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span data-i18n="contacts_open_wa">Open WhatsApp Web to see contacts</span>
+          </div>
+        </div>
+      </div>
+
+      <span id="photo1Contacts" style="display:none" aria-hidden="true"></span>
+      <span id="photo2Contacts" style="display:none" aria-hidden="true"></span>
+
+      <!-- Pro action buttons — Quick Switch and History (hidden for free tier) -->
+      <div class="pro-actions-bar" id="proActionsBar" style="display:none">
+        <button class="btn-pro-action" id="quickSwitchBtn" title="Flip all Photo 1 ⇄ Photo 2" data-i18n="quick_switch">⇄ Quick Switch</button>
+        <button class="btn-pro-action" id="historyBtn" title="View assignment history" data-i18n="history_btn">📋 History</button>
+      </div>
+
+      <div class="limit-info" id="limitInfo">
+        <span data-i18n="contacts_used">Free tier:</span> <strong id="contactsUsed">0</strong>/<span id="contactLimit">1</span>
+        <button class="upgrade-link" id="upgradeFromContacts" data-i18n="contacts_upgrade">Upgrade to Pro</button>
+      </div>
+    </section>
+
+    <!-- Settings Tab -->
+    <section class="tab-content" id="settingsTab">
+      <!-- P2P Sync Section -->
+      <div class="settings-group sync-group">
+        <div class="sync-section-header">
+          <span>P2P Sync</span>
+          <span class="sync-status-badge" id="syncStatusBadge">
+            <!-- Will show "Active" or "Inactive" -->
+          </span>
+        </div>
+
+        <div class="sync-status" id="syncStatusSection">
+          <div class="sync-indicator" id="syncIndicator">
+            <span class="sync-dot" id="syncDot"></span>
+            <span class="sync-text" id="syncStatusText">Checking...</span>
+          </div>
+        </div>
+
+        <div class="phone-input-container" id="phoneEntrySection">
+          <!-- Shown only when phone not yet registered -->
+          <div class="phone-why-matters" id="phoneWhyMatters">
+            <div class="phone-why-title">Why this matters</div>
+            <div class="phone-why-body">
+              DualProfile works both ways. Without your number, other users can't detect
+              that you have the extension — they'll see an <strong>Invite</strong> button
+              on your name instead of the <strong>DualProfile</strong> badge. Your assigned
+              photos also won't sync to their device in real time. It takes 10 seconds.
+            </div>
+          </div>
+
+          <label class="phone-input-label" for="phoneInput" data-i18n="settings_phone_label">Your WhatsApp Number</label>
+
+          <input
+            type="tel"
+            id="phoneInput"
+            placeholder="+"
+            class="phone-input"
+          />
+
+          <p class="phone-helper-text" data-i18n="settings_phone_helper">
+            Required for peer-to-peer photo sync. Stored as hash only.
+          </p>
+
+          <button id="savePhoneBtn" class="btn-primary btn-sm" data-i18n="save_number">
+            Save Number
+          </button>
+
+          <!-- Status message (shows after save) -->
+          <div id="phoneStatusMessage" class="phone-status-message" style="display: none;"></div>
+
+          <!-- Refresh prompt — shown immediately after first-time number save -->
+          <div class="refresh-prompt hidden" id="refreshPrompt">
+            <div class="refresh-prompt-icon">🔄</div>
+            <div class="refresh-prompt-body">
+              <div class="refresh-prompt-title" data-i18n="one_more_step">One more step</div>
+              <div class="refresh-prompt-msg" data-i18n="hard_refresh_msg">Hard refresh WhatsApp Web now so DualProfile can activate. Press <strong>Ctrl+Shift+R</strong> (Mac: <strong>Cmd+Shift+R</strong>) on your WhatsApp tab.</div>
+            </div>
+            <div class="refresh-prompt-status" id="refreshPromptStatus" data-i18n="refresh_prompt_waiting">Waiting...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3 data-i18n="settings_appearance">Appearance</h3>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label" data-i18n="settings_theme">Theme</span>
+            <span class="setting-desc" data-i18n="settings_theme_desc">Choose your preferred color scheme</span>
+          </div>
+          <div class="theme-selector">
+            <button class="theme-btn" data-theme="light" title="Light">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </button>
+            <button class="theme-btn" data-theme="dark" title="Dark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            </button>
+            <button class="theme-btn" data-theme="system" title="System">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3 data-i18n="settings_preview">Preview</h3>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label" data-i18n="settings_test">Test Your Setup</span>
+            <span class="setting-desc" data-i18n="settings_test_desc">Preview how contacts will see your photos</span>
+          </div>
+          <button class="btn-primary" id="previewBtn" data-i18n="settings_preview_btn">Preview</button>
+        </div>
+      </div>
+
+
+
+      <div class="settings-group">
+        <h3 data-i18n="settings_tutorial">Tutorial</h3>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label" data-i18n="settings_replay">Replay Onboarding</span>
+            <span class="setting-desc" data-i18n="settings_replay_desc">Watch the setup tutorial again</span>
+          </div>
+          <button class="btn-primary" id="replayTutorialBtn" data-i18n="settings_replay_btn">Replay</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3 data-i18n="settings_data">Data</h3>
+        <button class="btn-danger-outline" id="clearDataBtn" data-i18n="settings_clear">Clear All Data</button>
+      </div>
+
+      <!-- Dev Mode Panel (for testing tiers - triple-click version to show) -->
+      <div class="dev-mode-panel hidden" id="devModePanel">
+        <button class="dev-close-btn" id="devCloseBtn">&times;</button>
+        <h3>Developer Testing</h3>
+        <p class="dev-desc">Test tier features without payment</p>
+
+        <div class="dev-toggle-row">
+          <span>Enable Dev Mode</span>
+          <label class="toggle-switch small">
+            <input type="checkbox" id="devModeToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="dev-tier-select" id="devTierSelect">
+          <label>
+            <input type="radio" name="devTier" value="free" checked> FREE (2 contacts)
+          </label>
+          <label>
+            <input type="radio" name="devTier" value="pro"> PRO (unlimited)
+          </label>
+        </div>
+      </div>
+
+      <!-- Pro Features Section -->
+      <div class="pro-section">
+        <div class="pro-section-header">
+          <h3 data-i18n="pro_features_title">Pro Features</h3>
+          <span class="badge badge-pro">PRO</span>
+        </div>
+
+        <div class="pro-feature-list">
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x1F513;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_unlimited_title">Unlimited Contacts</strong>
+              <span data-i18n="pro_unlimited_desc">Assign to as many contacts as you want</span>
+            </div>
+          </div>
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x21C4;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_quickswitch_title">Quick Switch</strong>
+              <span data-i18n="pro_quickswitch_desc">Flip all P1 &#x21C4; P2 in one tap</span>
+            </div>
+          </div>
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x1F4CB;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_history_title">Assignment History</strong>
+              <span data-i18n="pro_history_desc">Full log of every change</span>
+            </div>
+          </div>
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x2709;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_support_title">Priority Support</strong>
+              <span data-i18n="pro_support_desc">Direct email access to the team</span>
+            </div>
+          </div>
+          <div class="pro-feature-item coming-soon">
+            <span class="pro-feature-icon">&#x1F6A7;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_workmode_title">Work / Personal Mode</strong>
+              <span data-i18n="pro_workmode_desc">Coming soon</span>
+            </div>
+          </div>
+          <div class="pro-feature-item coming-soon">
+            <span class="pro-feature-icon">&#x1F6A7;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_photohistory_title">Photo History &amp; Revert</strong>
+              <span data-i18n="pro_photohistory_desc">Coming soon</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-pro-upgrade" id="upgradeFromSettings" data-i18n="unlock_pro">
+          <span data-i18n="unlock_pro">Unlock Pro — $7.99/mo</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span class="version-text" id="versionText">DualProfile v1.0.3</span>
+      <button class="help-btn" id="helpBtn" data-i18n="help_btn">Help</button>
+    </footer>
+  </div>
+
+  <script src="../lib/config.js"></script>
+  <script src="../lib/tier-system.js"></script>
+  <script src="../lib/storage.js"></script>
+  <script src="onboarding.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
