@@ -3204,3 +3204,19 @@ body {
 /* ── Expired upgrade modal variant ── */
 .upgrade-modal--expired .modal-header .modal-icon { font-size: 32px; }
 .upgrade-modal--expired .modal-limit-msg { color: #f9fafb; font-size: 13px; line-height: 1.5; }
+
+/* ── Dev panel trial simulation buttons ─────────────────────────── */
+.dev-trial-btn {
+  background: #1e2a1e;
+  border: 1px solid #2d4a2d;
+  color: #7dcf7d;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dev-trial-btn:hover {
+  background: #243424;
+  border-color: #4a7a4a;
+}
