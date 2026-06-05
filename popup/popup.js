@@ -547,11 +547,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Clear data
-    elements.clearDataBtn.addEventListener('click', async () => {
-      if (confirm(dpT('confirm_clear'))) {
+    elements.clearDataBtn.addEventListener('click', () => {
+      // confirm() is blocked in Chrome extension popups — use inline confirm instead
+      const existing = document.getElementById('dp-confirm-overlay');
+      if (existing) return;
+      const overlay = document.createElement('div');
+      overlay.id = 'dp-confirm-overlay';
+      overlay.innerHTML = `
+        <div class="dp-confirm-box">
+          <p class="dp-confirm-msg">${dpT('confirm_clear')}</p>
+          <div class="dp-confirm-btns">
+            <button id="dpConfirmCancel" class="dp-confirm-btn dp-confirm-cancel">Cancel</button>
+            <button id="dpConfirmOk" class="dp-confirm-btn dp-confirm-ok">Clear</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      document.getElementById('dpConfirmCancel').onclick = () => overlay.remove();
+      document.getElementById('dpConfirmOk').onclick = async () => {
+        overlay.remove();
         await DualProfileStorage.clearAll();
         location.reload();
-      }
+      };
     });
 
     // Theme buttons
@@ -596,10 +613,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Replay tutorial button
-    if (elements.replayTutorialBtn && typeof DualProfileOnboarding !== 'undefined') {
+    if (elements.replayTutorialBtn) {
       elements.replayTutorialBtn.addEventListener('click', () => {
-        const onboarding = new DualProfileOnboarding();
-        onboarding.replay();
+        // Reset the onboarding flag then reload — the popup's DOMContentLoaded
+        // will detect shouldShowOnboarding()===true and launch onboarding fresh.
+        localStorage.removeItem('onboarding_complete');
+        localStorage.removeItem('onboarding_step');
+        location.reload();
       });
     }
 
@@ -2569,10 +2589,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="feature-note">${dpT('pro_support_desc')}</span>
           </li>
           <li>
-            <span class="feature-note coming-soon-item">&#x1F6A7; ${dpT('pro_workmode_title')} &mdash; ${dpT('coming_soon')}</span>
+            <span class="feature-note">&#x1F4F7; ${dpT('pro_photohistory_title')} &mdash; ${dpT('pro_photohistory_desc')}</span>
           </li>
           <li>
-            <span class="feature-note coming-soon-item">&#x1F6A7; ${dpT('pro_photohistory_title')} &mdash; ${dpT('coming_soon')}</span>
+            <span class="feature-note">&#x1F553; ${dpT('pro_schedule_title')} &mdash; ${dpT('pro_schedule_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-note">&#x1F4E6; ${dpT('pro_export_title')} &mdash; ${dpT('pro_export_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-note">&#x1F4F1; ${dpT('pro_multidevice_title')} &mdash; ${dpT('pro_multidevice_desc')}</span>
           </li>
         </ul>
 
