@@ -178,16 +178,23 @@ export const getPhotoForViewer = query({
 
     if (!assignment) return null;
 
-    // Get the assigned photo URL
-    const photo = await ctx.db
+    // Get the assigned photo URL — MUST filter isActive:true only.
+    // History photos (isHistory:true) must never be delivered to viewers.
+    const allSlotPhotos = await ctx.db
       .query("photos")
-      .withIndex("by_user", (q) => q.eq("userId", owner._id))
-      .filter((q) =>
-        q.eq(q.field("photoNumber"), assignment.photoNumber)
+      .withIndex("by_user_slot", (q) =>
+        q.eq("userId", owner._id).eq("photoNumber", assignment.photoNumber)
       )
-      .first();
+      .collect();
 
-    const url = photo?.cloudinaryUrl || null;
+    // Active photo: isActive===true. Fall back to most recent non-history if none marked active
+    // (handles legacy rows created before isActive field existed).
+    const activePhoto = allSlotPhotos.find(p => p.isActive === true)
+      || allSlotPhotos.filter(p => p.isHistory !== true)
+          .sort((a, b) => b.uploadedAt - a.uploadedAt)[0]
+      || null;
+
+    const url = activePhoto?.cloudinaryUrl || null;
     // Validate URL is from our Cloudinary account before returning
     if (url && !url.startsWith('https://res.cloudinary.com/duyagfgss/')) return null;
     return url;
@@ -278,18 +285,25 @@ export const getPhotosForViewerBatch = query({
     );
 
     // Step 3: Fetch photos for matched (userId, photoNumber) pairs.
+    // Must use isActive filter — history photos must never be delivered to viewers.
     const userIdToHash = Object.fromEntries(
       Object.entries(hashToUserId).map(([h, id]) => [String(id), h])
     );
     await Promise.all(
       assignments.map(async (a) => {
         if (!a) return;
-        const photo = await ctx.db
+        const slotPhotos = await ctx.db
           .query("photos")
-          .withIndex("by_user", (q) => q.eq("userId", a.userId))
-          .filter((q) => q.eq(q.field("photoNumber"), a.photoNumber))
-          .first();
-        const pUrl = photo?.cloudinaryUrl || null;
+          .withIndex("by_user_slot", (q) =>
+            q.eq("userId", a.userId).eq("photoNumber", a.photoNumber)
+          )
+          .collect();
+        // Active photo only — same fallback logic as getPhotoForViewer
+        const activePhoto = slotPhotos.find(p => p.isActive === true)
+          || slotPhotos.filter(p => p.isHistory !== true)
+              .sort((a2, b2) => b2.uploadedAt - a2.uploadedAt)[0]
+          || null;
+        const pUrl = activePhoto?.cloudinaryUrl || null;
         const ownerHash = userIdToHash[String(a.userId)];
         if (ownerHash) {
           results[ownerHash] = (pUrl && pUrl.startsWith('https://res.cloudinary.com/duyagfgss/')) ? pUrl : null;
