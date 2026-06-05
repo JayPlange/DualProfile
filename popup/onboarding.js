@@ -1455,7 +1455,7 @@ const DP_I18N = {
     pro_workmode_title: 'Mode travail / personnel',
     pro_workmode_desc: 'Bientôt disponible',
     pro_photohistory_title: 'Historique photos et retour arrière',
-    pro_photohistory_desc: 'Restaurez l'une de vos 3 dernières photos',
+    pro_photohistory_desc: "Restaurez l'une de vos 3 dernières photos",
     pro_schedule_title: 'Photos programmées',
     pro_schedule_desc: 'Changez de photo automatiquement par jour et heure',
     pro_export_title: 'Exporter et importer les assignations',
@@ -1465,9 +1465,9 @@ const DP_I18N = {
     history_panel_title: 'Historique des photos',
     history_slot1: 'Historique photo 1', history_slot2: 'Historique photo 2',
     history_restore_btn: 'Restaurer',
-    history_empty: 'Pas encore d'historique — les photos précédentes apparaîtront ici',
+    history_empty: "Pas encore d'historique — les photos précédentes apparaîtront ici",
     history_restored_toast: 'Photo restaurée avec succès',
-    history_pro_gate: 'L'historique des photos est une fonction Pro',
+    history_pro_gate: "L'historique des photos est une fonction Pro",
     schedule_panel_title: 'Photos programmées',
     schedule_enable_label: 'Activer le planning',
     schedule_photo_label: 'Photo active pendant la fenêtre',
@@ -1480,7 +1480,7 @@ const DP_I18N = {
     schedule_active_badge: 'Planning actif',
     export_btn: 'Exporter les assignations', import_btn: 'Importer les assignations',
     export_success_toast: 'Assignations exportées', import_success_toast: 'Assignations importées',
-    import_error_toast: 'Fichier invalide', export_pro_gate: 'L'export/import est une fonction Pro',
+    import_error_toast: 'Fichier invalide', export_pro_gate: "L'export/import est une fonction Pro",
     unlock_pro: 'Débloquer Pro — £9.99/mois',
     coming_soon: 'Bientôt disponible',
     history_panel_title: "Historique d'assignation",
@@ -2852,8 +2852,14 @@ class DualProfileOnboarding {
 
   async shouldShowOnboarding() {
     return new Promise(resolve => {
-      chrome.storage.local.get(['dp_onboarding_complete'], (data) => {
-        resolve(!data.dp_onboarding_complete);
+      chrome.storage.local.get(null, (allData) => {
+        // Log everything so we can see exactly what's in storage
+        console.log('[DualProfile][Onboarding] Full storage:', JSON.stringify(allData));
+        console.log('[DualProfile][Onboarding] dp_onboarding_complete =', allData.dp_onboarding_complete);
+        console.log('[DualProfile][Onboarding] myPhoneHash =', allData.myPhoneHash);
+        const shouldShow = !allData.dp_onboarding_complete;
+        console.log('[DualProfile][Onboarding] shouldShow =', shouldShow);
+        resolve(shouldShow);
       });
     });
   }
