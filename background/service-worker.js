@@ -33,6 +33,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       syncPendingAssignments();
     }).catch(function() {});
   }
+  if (alarm.name === 'dp-schedule-check') {
+    checkScheduleAndSwitch().catch(function(e) {
+      console.warn('[DualProfile][SW] Schedule check failed:', e);
+    });
+  }
   if (alarm.name === 'dp-trial-warn') {
     fireDay2Notification().catch(function(e) {
       console.warn('[DualProfile][SW] Day 2 notification failed:', e);
@@ -576,6 +581,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'SCHEDULE_TRIAL_NOTIFICATIONS':
       handleScheduleTrialNotifications(message, sendResponse);
+      return true;
+
+    // ── Pro features ──────────────────────────────────────────────────────────
+    case 'GET_PHOTO_HISTORY':
+      handleGetPhotoHistory(message, sendResponse);
+      return true;
+
+    case 'RESTORE_FROM_HISTORY':
+      handleRestoreFromHistory(message, sendResponse);
+      return true;
+
+    case 'GET_SCHEDULE':
+      handleGetSchedule(message, sendResponse);
+      return true;
+
+    case 'SAVE_SCHEDULE':
+      handleSaveSchedule(message, sendResponse);
+      return true;
+
+    case 'DELETE_SCHEDULE':
+      handleDeleteSchedule(message, sendResponse);
+      return true;
+
+    case 'EXPORT_ASSIGNMENTS':
+      handleExportAssignments(message, sendResponse);
+      return true;
+
+    case 'IMPORT_ASSIGNMENTS':
+      handleImportAssignments(message, sendResponse);
+      return true;
+
+    case 'SYNC_PREFS':
+      handleSyncPrefs(message, sendResponse);
       return true;
 
     default:
@@ -1754,3 +1792,193 @@ chrome.notifications.onClicked.addListener((notificationId) => {
     chrome.notifications.clear(notificationId);
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PRO FEATURES — Service Worker Handlers
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Photo History ─────────────────────────────────────────────────────────────
+
+async function handleGetPhotoHistory(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+    const result = await ConvexClient.query('photos:getUserPhotos', { userId });
+    sendResponse({ success: true, history1: result.history1 || [], history2: result.history2 || [] });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+async function handleRestoreFromHistory(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+    await ConvexClient.mutation('photos:restoreFromHistory', { userId, photoId: message.photoId });
+    sendResponse({ success: true });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+// ── Scheduled Photos ──────────────────────────────────────────────────────────
+
+async function handleGetSchedule(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+    const schedule = await ConvexClient.query('schedules:getSchedule', { userId });
+    // Cache locally for the alarm handler to read without Convex round-trip
+    await chrome.storage.local.set({ dp_schedule: schedule });
+    sendResponse({ success: true, schedule });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+async function handleSaveSchedule(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+    const { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute } = message;
+    await ConvexClient.mutation('schedules:saveSchedule', {
+      userId, enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
+    });
+    const schedule = { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute };
+    await chrome.storage.local.set({ dp_schedule: schedule });
+    // Reschedule alarms with updated schedule
+    await reschedulePhotoAlarms(schedule);
+    sendResponse({ success: true });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+async function handleDeleteSchedule(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+    await ConvexClient.mutation('schedules:deleteSchedule', { userId });
+    await chrome.storage.local.remove('dp_schedule');
+    await chrome.alarms.clear('dp-schedule-check');
+    sendResponse({ success: true });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+// ── Schedule alarm: check every minute if we need to switch photos ────────────
+async function checkScheduleAndSwitch() {
+  try {
+    const stored = await chrome.storage.local.get('dp_schedule');
+    const schedule = stored.dp_schedule;
+    if (!schedule || !schedule.enabled) return;
+
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+    const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+    const inWindow = schedule.days.includes(dayOfWeek) && currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    const targetPhoto = inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
+
+    // Read current active photo slot from state
+    const stateResult = await swGet('state');
+    const currentActive = stateResult?.state?.meta?.activePhotoSlot || 1;
+    if (currentActive === targetPhoto) return; // already correct — no switch needed
+
+    // Switch active slot in local state
+    const state = stateResult.state || getDefaultState();
+    if (!state.meta) state.meta = {};
+    state.meta.activePhotoSlot = targetPhoto;
+    await swSet({ state });
+
+    // Notify content script to update header photo
+    const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+    for (const tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'SCHEDULE_PHOTO_SWITCH',
+        activePhotoSlot: targetPhoto
+      }).catch(() => {});
+    }
+    console.debug(`[DualProfile][SW] Schedule switch → Photo ${targetPhoto}`);
+  } catch(e) {
+    console.warn('[DualProfile][SW] Schedule check failed:', e.message);
+  }
+}
+
+async function reschedulePhotoAlarms(schedule) {
+  await chrome.alarms.clear('dp-schedule-check');
+  if (schedule && schedule.enabled) {
+    chrome.alarms.create('dp-schedule-check', { periodInMinutes: 1 });
+  }
+}
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+
+async function handleExportAssignments(message, sendResponse) {
+  try {
+    const stateResult = await swGet('state');
+    const contactMap = stateResult?.state?.rules?.contactMap || {};
+    const exportData = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      contactMap,
+    };
+    sendResponse({ success: true, data: exportData });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+async function handleImportAssignments(message, sendResponse) {
+  try {
+    const { data } = message;
+    if (!data || !data.contactMap) {
+      sendResponse({ success: false, error: 'Invalid import data' });
+      return;
+    }
+    const stateResult = await swGet('state');
+    const state = stateResult.state || getDefaultState();
+    if (!state.rules) state.rules = {};
+    // Merge — imported contacts are added without overwriting manually set ones
+    state.rules.contactMap = { ...data.contactMap, ...state.rules.contactMap };
+    await swSet({ state });
+    sendResponse({ success: true, count: Object.keys(data.contactMap).length });
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+// ── Multi-device preference sync ──────────────────────────────────────────────
+
+async function handleSyncPrefs(message, sendResponse) {
+  try {
+    await _syncInitPromise;
+    const userId = SyncManager._convexUserId;
+    if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
+
+    if (message.action === 'push') {
+      const stored = await chrome.storage.local.get('dp_lang');
+      await ConvexClient.mutation('userPrefs:saveUserPrefs', {
+        userId,
+        language: stored.dp_lang || 'en',
+      });
+      sendResponse({ success: true });
+    } else {
+      // pull
+      const prefs = await ConvexClient.query('userPrefs:getUserPrefs', { userId });
+      if (prefs?.language) {
+        await chrome.storage.local.set({ dp_lang: prefs.language });
+      }
+      sendResponse({ success: true, prefs });
+    }
+  } catch(e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
