@@ -956,7 +956,7 @@ async function handleGetTrialStatus(sendResponse) {
       return;
     }
 
-    const result = await ConvexClient.query('users:getTrialStatus', { userId });
+    const result = await ConvexHTTP.query('users:getTrialStatus', { userId });
     if (!result) {
       sendResponse({ success: true, trialStatus: 'not_started', effectiveTier: 'free' });
       return;
@@ -967,7 +967,7 @@ async function handleGetTrialStatus(sendResponse) {
 
     // If active trial has expired server-side, mark expired locally too
     if (result.effectiveTier === 'free' && result.trialStatus === 'active') {
-      await ConvexClient.mutation('users:expireTrial', { userId });
+      await ConvexHTTP.mutation('users:expireTrial', { userId });
       result.trialStatus = 'expired';
       await swSet({ trialState: result });
     }
@@ -984,7 +984,7 @@ async function handleExpireTrial(sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (userId && DualProfileConfig.isSyncEnabled()) {
-      await ConvexClient.mutation('users:expireTrial', { userId });
+      await ConvexHTTP.mutation('users:expireTrial', { userId });
     }
     // Update local cache
     const cached = await swGet('trialState');
@@ -1804,7 +1804,7 @@ async function handleGetPhotoHistory(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    const result = await ConvexClient.query('photos:getUserPhotos', { userId });
+    const result = await ConvexHTTP.query('photos:getUserPhotos', { userId });
     sendResponse({ success: true, history1: result.history1 || [], history2: result.history2 || [] });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
@@ -1816,7 +1816,7 @@ async function handleRestoreFromHistory(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    await ConvexClient.mutation('photos:restoreFromHistory', { userId, photoId: message.photoId });
+    await ConvexHTTP.mutation('photos:restoreFromHistory', { userId, photoId: message.photoId });
     sendResponse({ success: true });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
@@ -1830,7 +1830,7 @@ async function handleGetSchedule(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    const schedule = await ConvexClient.query('schedules:getSchedule', { userId });
+    const schedule = await ConvexHTTP.query('schedules:getSchedule', { userId });
     // Cache locally for the alarm handler to read without Convex round-trip
     await chrome.storage.local.set({ dp_schedule: schedule });
     sendResponse({ success: true, schedule });
@@ -1845,7 +1845,7 @@ async function handleSaveSchedule(message, sendResponse) {
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
     const { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute } = message;
-    await ConvexClient.mutation('schedules:saveSchedule', {
+    await ConvexHTTP.mutation('schedules:saveSchedule', {
       userId, enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
     });
     const schedule = { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute };
@@ -1863,7 +1863,7 @@ async function handleDeleteSchedule(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    await ConvexClient.mutation('schedules:deleteSchedule', { userId });
+    await ConvexHTTP.mutation('schedules:deleteSchedule', { userId });
     await chrome.storage.local.remove('dp_schedule');
     await chrome.alarms.clear('dp-schedule-check');
     sendResponse({ success: true });
@@ -1965,14 +1965,14 @@ async function handleSyncPrefs(message, sendResponse) {
 
     if (message.action === 'push') {
       const stored = await chrome.storage.local.get('dp_lang');
-      await ConvexClient.mutation('userPrefs:saveUserPrefs', {
+      await ConvexHTTP.mutation('userPrefs:saveUserPrefs', {
         userId,
         language: stored.dp_lang || 'en',
       });
       sendResponse({ success: true });
     } else {
       // pull
-      const prefs = await ConvexClient.query('userPrefs:getUserPrefs', { userId });
+      const prefs = await ConvexHTTP.query('userPrefs:getUserPrefs', { userId });
       if (prefs?.language) {
         await chrome.storage.local.set({ dp_lang: prefs.language });
       }
