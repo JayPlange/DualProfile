@@ -30,6 +30,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   applyI18n();
 
+  // Set version from manifest so it always reflects the real version
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const vt = document.getElementById('versionText');
+    if (vt && manifest.version) vt.textContent = 'DualProfile v' + manifest.version;
+  } catch(e) {}
+
+
   // Interpolate {days}, {hours}, {count} placeholders in trial strings
   function dpTrialT(key, vars) {
     let str = (typeof dpT === 'function') ? dpT(key) : key;
