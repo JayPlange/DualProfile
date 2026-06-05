@@ -3346,3 +3346,50 @@ body {
   justify-content: center;
   cursor: pointer;
 }
+
+/* ── Inline confirm dialog (replaces blocked confirm()) ─────────── */
+#dp-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dp-confirm-box {
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 260px;
+  text-align: center;
+}
+.dp-confirm-msg {
+  font-size: 13px;
+  color: var(--text-primary, #fff);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.dp-confirm-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.dp-confirm-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+.dp-confirm-cancel {
+  background: rgba(255,255,255,0.08);
+  color: #aaa;
+}
+.dp-confirm-ok {
+  background: #e53935;
+  color: #fff;
+}
