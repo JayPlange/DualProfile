@@ -2850,32 +2850,39 @@ class DualProfileOnboarding {
     this.returnAfterPhone = false;
   }
 
-  shouldShowOnboarding() {
-    return !localStorage.getItem('onboarding_complete');
+  async shouldShowOnboarding() {
+    return new Promise(resolve => {
+      chrome.storage.local.get(['dp_onboarding_complete'], (data) => {
+        resolve(!data.dp_onboarding_complete);
+      });
+    });
   }
 
-  getSavedStep() {
-    const saved = localStorage.getItem('onboarding_step');
-    return saved ? parseInt(saved, 10) : 1;
+  async getSavedStep() {
+    return new Promise(resolve => {
+      chrome.storage.local.get(['dp_onboarding_step'], (data) => {
+        resolve(data.dp_onboarding_step ? parseInt(data.dp_onboarding_step, 10) : 1);
+      });
+    });
   }
 
   saveStep(step) {
-    localStorage.setItem('onboarding_step', step.toString());
+    chrome.storage.local.set({ dp_onboarding_step: step.toString() });
   }
 
   completeOnboarding() {
-    localStorage.setItem('onboarding_complete', 'true');
-    localStorage.removeItem('onboarding_step');
+    chrome.storage.local.set({ dp_onboarding_complete: 'true' });
+    chrome.storage.local.remove('dp_onboarding_step');
   }
 
   static resetOnboarding() {
-    localStorage.removeItem('onboarding_complete');
-    localStorage.removeItem('onboarding_step');
+    chrome.storage.local.remove(['dp_onboarding_complete', 'dp_onboarding_step']);
   }
 
   async start() {
-    if (!this.shouldShowOnboarding()) return;
-    this.currentStep = this.getSavedStep();
+    const show = await this.shouldShowOnboarding();
+    if (!show) return;
+    this.currentStep = await this.getSavedStep();
     this.createModal();
     this.renderStep(this.currentStep);
   }
