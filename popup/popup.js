@@ -50,22 +50,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Initialize onboarding for new users
-  // IMPORTANT: onboarding_complete lives in localStorage (not chrome.storage.local).
-  // On a genuinely fresh install, chrome.storage 'state' won't have a phoneHash.
-  // If that's the case, force-reset the localStorage flag so onboarding always
-  // shows for users who haven't actually completed setup — even on the same machine.
+  // Flag now lives in chrome.storage.local (dp_onboarding_complete) so it
+  // is cleared along with all other extension data on remove/reinstall.
   if (typeof DualProfileOnboarding !== 'undefined') {
-    try {
-      const freshCheck = await new Promise(resolve =>
-        chrome.storage.local.get(['myPhoneHash', 'myPhone'], resolve)
-      );
-      const hasPhone = freshCheck?.myPhoneHash || freshCheck?.myPhone;
-      if (!hasPhone) {
-        // No phone registered = genuinely not set up — force onboarding
-        localStorage.removeItem('onboarding_complete');
-        localStorage.removeItem('onboarding_step');
-      }
-    } catch(e) { /* ignore — proceed to start() which checks the flag itself */ }
     const onboarding = new DualProfileOnboarding();
     await onboarding.start();
   }
@@ -638,10 +625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Replay tutorial button
     if (elements.replayTutorialBtn) {
       elements.replayTutorialBtn.addEventListener('click', () => {
-        // Reset the onboarding flag then reload — the popup's DOMContentLoaded
-        // will detect shouldShowOnboarding()===true and launch onboarding fresh.
-        localStorage.removeItem('onboarding_complete');
-        localStorage.removeItem('onboarding_step');
+        DualProfileOnboarding.resetOnboarding();
         location.reload();
       });
     }
