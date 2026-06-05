@@ -70,13 +70,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const existing = document.querySelector('.trial-started-toast');
     if (existing) existing.remove();
 
+    // Detect existing users — they have contacts already assigned
+    const contactCount = Object.keys(contactMap).length;
+    const isExistingUser = contactCount > 0;
+    const title = isExistingUser ? dpT('existing_user_trial_title') : dpT('trial_started_title');
+    const desc  = isExistingUser ? dpT('existing_user_trial_desc')  : dpT('trial_started_desc');
+
     const toast = document.createElement('div');
     toast.className = 'trial-started-toast';
     toast.innerHTML = `
-      <div class="trial-toast-icon">✅</div>
+      <div class="trial-toast-icon">${isExistingUser ? '🎁' : '✅'}</div>
       <div class="trial-toast-body">
-        <div class="trial-toast-title">${dpT('trial_started_title')}</div>
-        <div class="trial-toast-desc">${dpT('trial_started_desc')}</div>
+        <div class="trial-toast-title">${title}</div>
+        <div class="trial-toast-desc">${desc}</div>
       </div>
       <button class="trial-toast-close">&times;</button>
     `;
@@ -388,7 +394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       const limitInfo = $('limitInfo');
       if (limitInfo) limitInfo.classList.add('hidden');
-      // Show Quick Switch and History buttons
+      // Show History button (Quick Switch removed)
       if (proActionsBar) proActionsBar.style.display = 'flex';
     } else {
       // Hide Quick Switch and History buttons on free tier
@@ -593,8 +599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Quick-switch and history buttons (Pro)
-    const quickSwitchBtn = document.getElementById('quickSwitchBtn');
-    if (quickSwitchBtn) quickSwitchBtn.addEventListener('click', handleQuickSwitch);
+    // Quick Switch button removed — P1/P2 buttons on each contact serve the same purpose
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) historyBtn.addEventListener('click', showHistoryPanel);
 
@@ -3110,7 +3115,7 @@ function hideProGate(formId, gateId) {
 
 // ── Photo History ─────────────────────────────────────────────────────────────
 async function initPhotoHistory(isPro) {
-  if (!isPro) { showProGate('historySection', 'historyProGate'); return; }
+  // Intent-moment paywall: always show history thumbnails, block Restore tap only
   hideProGate('historySection', 'historyProGate');
 
   const resp = await chrome.runtime.sendMessage({ type: 'GET_PHOTO_HISTORY' });
@@ -3140,6 +3145,7 @@ function renderHistorySlot(containerId, items, slot) {
       <div class="history-restore-label" data-i18n="history_restore_btn">${dpT('history_restore_btn')}</div>
     `;
     thumb.addEventListener('click', async () => {
+      if (!isPro) { showUpgradeModal('standard'); return; }
       const resp = await chrome.runtime.sendMessage({ type: 'RESTORE_FROM_HISTORY', photoId: item.id });
       if (resp?.success) {
         showToast(dpT('history_restored_toast'));
@@ -3152,7 +3158,7 @@ function renderHistorySlot(containerId, items, slot) {
 
 // ── Scheduled Photos ──────────────────────────────────────────────────────────
 async function initSchedule(isPro) {
-  if (!isPro) { showProGate('scheduleForm', 'scheduleProGate'); return; }
+  // Intent-moment paywall: always show the UI, block only the Save action
   hideProGate('scheduleForm', 'scheduleProGate');
 
   // Load existing schedule
@@ -3227,10 +3233,7 @@ function bindExportImport(isPro) {
   const exportBtn = document.getElementById('exportBtn');
   const importInput = document.getElementById('importFileInput');
   const exportGateBtn = document.getElementById('exportUpgradeBtn');
-
-  if (!isPro) {
-    showProGate('exportForm', 'exportProGate');
-  }
+  // Intent-moment paywall: always show UI, block only the action buttons
 
   if (exportBtn) {
     exportBtn.addEventListener('click', async () => {
