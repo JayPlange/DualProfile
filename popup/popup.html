@@ -179,6 +179,29 @@
         </select>
       </div>
 
+      <!-- Photo History (Pro) -->
+      <div class="pro-section history-section" id="photoHistorySection">
+        <div class="pro-section-header">
+          <span data-i18n="history_panel_title">Photo History</span>
+          <span class="pro-badge">PRO</span>
+        </div>
+        <div class="history-slots">
+          <div class="history-slot">
+            <p class="history-slot-label" data-i18n="history_slot1">Photo 1 history</p>
+            <div class="history-thumbs" id="history1List"></div>
+          </div>
+          <div class="history-slot">
+            <p class="history-slot-label" data-i18n="history_slot2">Photo 2 history</p>
+            <div class="history-thumbs" id="history2List"></div>
+          </div>
+        </div>
+        <p class="history-empty hidden" id="historyEmpty" data-i18n="history_empty">No history yet</p>
+        <div class="pro-gate hidden" id="historyProGate">
+          <span data-i18n="history_pro_gate">Photo history is a Pro feature</span>
+          <button class="btn-upgrade-inline" id="historyUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+        </div>
+      </div>
+
       <!-- Live Preview Section -->
       <div class="live-preview-section">
         <h3 data-i18n="photo_live_preview">Live Preview</h3>
@@ -379,6 +402,87 @@
       <div class="settings-group">
         <h3 data-i18n="settings_data">Data</h3>
         <button class="btn-danger-outline" id="clearDataBtn" data-i18n="settings_clear">Clear All Data</button>
+      </div>
+
+      <!-- Scheduled Photos (Pro) -->
+      <div class="settings-group pro-section" id="scheduleSection">
+        <div class="pro-section-header">
+          <h3 data-i18n="schedule_panel_title">Scheduled Photos</h3>
+          <span class="pro-badge">PRO</span>
+        </div>
+        <div id="scheduleForm">
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label" data-i18n="schedule_enable_label">Enable schedule</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="scheduleEnabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="schedule-fields" id="scheduleFields">
+            <div class="setting-item">
+              <span class="setting-label" data-i18n="schedule_photo_label">Active photo during window</span>
+              <select id="schedulePhotoNumber">
+                <option value="1">Photo 1</option>
+                <option value="2">Photo 2</option>
+              </select>
+            </div>
+            <div class="setting-item schedule-days-row">
+              <span class="setting-label" data-i18n="schedule_days_label">Active days</span>
+              <div class="day-chips" id="scheduleDays">
+                <button class="day-chip" data-day="0" data-i18n="schedule_day_sun">Sun</button>
+                <button class="day-chip" data-day="1" data-i18n="schedule_day_mon">Mon</button>
+                <button class="day-chip" data-day="2" data-i18n="schedule_day_tue">Tue</button>
+                <button class="day-chip" data-day="3" data-i18n="schedule_day_wed">Wed</button>
+                <button class="day-chip" data-day="4" data-i18n="schedule_day_thu">Thu</button>
+                <button class="day-chip" data-day="5" data-i18n="schedule_day_fri">Fri</button>
+                <button class="day-chip" data-day="6" data-i18n="schedule_day_sat">Sat</button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label" data-i18n="schedule_start_label">Start time</span>
+              <input type="time" id="scheduleStart" value="09:00">
+            </div>
+            <div class="setting-item">
+              <span class="setting-label" data-i18n="schedule_end_label">End time</span>
+              <input type="time" id="scheduleEnd" value="18:00">
+            </div>
+            <button class="btn-primary btn-sm" id="saveScheduleBtn" data-i18n="schedule_save_btn">Save schedule</button>
+          </div>
+          <div class="schedule-active-badge hidden" id="scheduleActiveBadge">
+            <span>🟢</span> <span data-i18n="schedule_active_badge">Schedule active</span>
+          </div>
+        </div>
+        <div class="pro-gate hidden" id="scheduleProGate">
+          <span data-i18n="schedule_pro_gate">Scheduled photos is a Pro feature</span>
+          <button class="btn-upgrade-inline" id="scheduleUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+        </div>
+      </div>
+
+      <!-- Export / Import (Pro) -->
+      <div class="settings-group pro-section" id="exportSection">
+        <div class="pro-section-header">
+          <h3 data-i18n="pro_export_title">Export &amp; Import Assignments</h3>
+          <span class="pro-badge">PRO</span>
+        </div>
+        <div id="exportForm">
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label" data-i18n="pro_export_title">Export &amp; Import</span>
+              <span class="setting-desc" data-i18n="pro_export_desc">Backup and restore all your contact assignments</span>
+            </div>
+          </div>
+          <div class="export-btns">
+            <button class="btn-primary btn-sm" id="exportBtn" data-i18n="export_btn">Export assignments</button>
+            <label class="btn-primary btn-sm btn-import-label" for="importFileInput" data-i18n="import_btn">Import assignments</label>
+            <input type="file" id="importFileInput" accept=".json" hidden>
+          </div>
+        </div>
+        <div class="pro-gate hidden" id="exportProGate">
+          <span data-i18n="export_pro_gate">Export &amp; import is a Pro feature</span>
+          <button class="btn-upgrade-inline" id="exportUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+        </div>
       </div>
 
       <!-- Dev Mode Panel (for testing tiers - triple-click version to show) -->
