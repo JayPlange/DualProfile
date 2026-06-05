@@ -3220,3 +3220,129 @@ body {
   background: #243424;
   border-color: #4a7a4a;
 }
+
+/* ── Pro Feature Panels ──────────────────────────────────────────── */
+.pro-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pro-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #f0c040;
+  background: rgba(240,192,64,0.12);
+  border: 1px solid rgba(240,192,64,0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.pro-gate {
+  background: rgba(255,255,255,0.04);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #888;
+}
+.btn-upgrade-inline {
+  background: linear-gradient(135deg, #25D366, #128C7E);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── Photo History ───────────────────────────────────────────────── */
+.history-section { margin-top: 16px; }
+.history-slots { display: flex; gap: 12px; }
+.history-slot { flex: 1; }
+.history-slot-label { font-size: 11px; color: #888; margin-bottom: 6px; }
+.history-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.history-thumb {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.history-thumb:hover { border-color: #25D366; }
+.history-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.history-restore-label {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 9px;
+  text-align: center;
+  padding: 2px 0;
+}
+.history-empty { font-size: 12px; color: #666; text-align: center; padding: 8px 0; }
+
+/* ── Schedule ────────────────────────────────────────────────────── */
+.schedule-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.schedule-days-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+.day-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.day-chip {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: transparent;
+  color: #aaa;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.day-chip.active {
+  background: #25D366;
+  border-color: #25D366;
+  color: #fff;
+  font-weight: 600;
+}
+.schedule-active-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #25D366;
+  margin-top: 8px;
+}
+.toggle-switch { position: relative; display: inline-block; width: 38px; height: 22px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #444; border-radius: 22px;
+  transition: 0.2s;
+}
+.toggle-slider:before {
+  content: '';
+  position: absolute;
+  height: 16px; width: 16px;
+  left: 3px; bottom: 3px;
+  background: white; border-radius: 50%;
+  transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #25D366; }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); }
+
+/* ── Export / Import ─────────────────────────────────────────────── */
+.export-btns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.btn-import-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
