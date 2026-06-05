@@ -283,6 +283,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Update Pro UI based on tier
       updateProUI();
 
+      // Initialize Pro features (gated by isPro)
+      initProFeatures(isPro).catch(e => console.warn('[DualProfile] Pro features init error:', e));
+
       // Initialize sync status
       await initializeSync();
 
@@ -3052,4 +3055,205 @@ function launchConfetti() {
     }
   }
   requestAnimationFrame(draw);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PRO FEATURES — Popup Logic
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Shared Pro gate helper ────────────────────────────────────────────────────
+function showProGate(formId, gateId) {
+  const form = document.getElementById(formId);
+  const gate = document.getElementById(gateId);
+  if (form) form.style.display = 'none';
+  if (gate) gate.classList.remove('hidden');
+}
+function hideProGate(formId, gateId) {
+  const form = document.getElementById(formId);
+  const gate = document.getElementById(gateId);
+  if (form) form.style.display = '';
+  if (gate) gate.classList.add('hidden');
+}
+
+// ── Photo History ─────────────────────────────────────────────────────────────
+async function initPhotoHistory(isPro) {
+  if (!isPro) { showProGate('historySection', 'historyProGate'); return; }
+  hideProGate('historySection', 'historyProGate');
+
+  const resp = await chrome.runtime.sendMessage({ type: 'GET_PHOTO_HISTORY' });
+  if (!resp?.success) return;
+
+  const { history1, history2 } = resp;
+  renderHistorySlot('history1List', history1, 1);
+  renderHistorySlot('history2List', history2, 2);
+
+  const historyEmpty = document.getElementById('historyEmpty');
+  if (historyEmpty) {
+    historyEmpty.classList.toggle('hidden', history1.length > 0 || history2.length > 0);
+  }
+}
+
+function renderHistorySlot(containerId, items, slot) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  if (!items || items.length === 0) return;
+
+  items.forEach(item => {
+    const thumb = document.createElement('div');
+    thumb.className = 'history-thumb';
+    thumb.innerHTML = `
+      <img src="${item.url}" alt="History photo">
+      <div class="history-restore-label" data-i18n="history_restore_btn">${dpT('history_restore_btn')}</div>
+    `;
+    thumb.addEventListener('click', async () => {
+      const resp = await chrome.runtime.sendMessage({ type: 'RESTORE_FROM_HISTORY', photoId: item.id });
+      if (resp?.success) {
+        showToast(dpT('history_restored_toast'));
+        initPhotoHistory(true);
+      }
+    });
+    container.appendChild(thumb);
+  });
+}
+
+// ── Scheduled Photos ──────────────────────────────────────────────────────────
+async function initSchedule(isPro) {
+  if (!isPro) { showProGate('scheduleForm', 'scheduleProGate'); return; }
+  hideProGate('scheduleForm', 'scheduleProGate');
+
+  // Load existing schedule
+  const resp = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULE' });
+  if (!resp?.success || !resp.schedule) return;
+
+  const s = resp.schedule;
+  const enabledToggle = document.getElementById('scheduleEnabled');
+  const fields = document.getElementById('scheduleFields');
+  const badge = document.getElementById('scheduleActiveBadge');
+
+  if (enabledToggle) enabledToggle.checked = s.enabled;
+  if (fields) fields.style.display = s.enabled ? '' : 'none';
+  if (badge) badge.classList.toggle('hidden', !s.enabled);
+
+  const photoSel = document.getElementById('schedulePhotoNumber');
+  if (photoSel) photoSel.value = String(s.photoNumber);
+
+  const startInput = document.getElementById('scheduleStart');
+  const endInput = document.getElementById('scheduleEnd');
+  if (startInput) startInput.value = `${String(s.startHour).padStart(2,'0')}:${String(s.startMinute).padStart(2,'0')}`;
+  if (endInput) endInput.value = `${String(s.endHour).padStart(2,'0')}:${String(s.endMinute).padStart(2,'0')}`;
+
+  // Highlight active day chips
+  document.querySelectorAll('.day-chip').forEach(chip => {
+    const day = parseInt(chip.dataset.day);
+    chip.classList.toggle('active', s.days.includes(day));
+  });
+}
+
+function bindScheduleUI(isPro) {
+  const enabledToggle = document.getElementById('scheduleEnabled');
+  const fields = document.getElementById('scheduleFields');
+  if (enabledToggle && fields) {
+    enabledToggle.addEventListener('change', () => {
+      fields.style.display = enabledToggle.checked ? '' : 'none';
+    });
+  }
+
+  document.querySelectorAll('.day-chip').forEach(chip => {
+    chip.addEventListener('click', () => chip.classList.toggle('active'));
+  });
+
+  const saveBtn = document.getElementById('saveScheduleBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (!isPro) { showUpgradeModal('standard'); return; }
+      const enabled = document.getElementById('scheduleEnabled')?.checked || false;
+      const photoNumber = parseInt(document.getElementById('schedulePhotoNumber')?.value || '1');
+      const days = [...document.querySelectorAll('.day-chip.active')].map(c => parseInt(c.dataset.day));
+      const [startHour, startMinute] = (document.getElementById('scheduleStart')?.value || '09:00').split(':').map(Number);
+      const [endHour, endMinute] = (document.getElementById('scheduleEnd')?.value || '18:00').split(':').map(Number);
+
+      const resp = await chrome.runtime.sendMessage({
+        type: 'SAVE_SCHEDULE', enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
+      });
+      if (resp?.success) {
+        showToast(dpT('schedule_saved_toast'));
+        const badge = document.getElementById('scheduleActiveBadge');
+        if (badge) badge.classList.toggle('hidden', !enabled);
+      }
+    });
+  }
+
+  // Upgrade button in pro gate
+  const upgradeBtn = document.getElementById('scheduleUpgradeBtn');
+  if (upgradeBtn) upgradeBtn.addEventListener('click', () => showUpgradeModal('standard'));
+}
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+function bindExportImport(isPro) {
+  const exportBtn = document.getElementById('exportBtn');
+  const importInput = document.getElementById('importFileInput');
+  const exportGateBtn = document.getElementById('exportUpgradeBtn');
+
+  if (!isPro) {
+    showProGate('exportForm', 'exportProGate');
+  }
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+      if (!isPro) { showUpgradeModal('standard'); return; }
+      const resp = await chrome.runtime.sendMessage({ type: 'EXPORT_ASSIGNMENTS' });
+      if (resp?.success) {
+        const blob = new Blob([JSON.stringify(resp.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dualprofile-assignments-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(dpT('export_success_toast'));
+      }
+    });
+  }
+
+  if (importInput) {
+    importInput.addEventListener('change', async (e) => {
+      if (!isPro) { showUpgradeModal('standard'); return; }
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const resp = await chrome.runtime.sendMessage({ type: 'IMPORT_ASSIGNMENTS', data });
+        if (resp?.success) {
+          showToast(dpT('import_success_toast'));
+        } else {
+          showToast(dpT('import_error_toast'));
+        }
+      } catch {
+        showToast(dpT('import_error_toast'));
+      }
+      importInput.value = '';
+    });
+  }
+
+  if (exportGateBtn) exportGateBtn.addEventListener('click', () => showUpgradeModal('standard'));
+}
+
+// ── Multi-device prefs sync ───────────────────────────────────────────────────
+// Called once on popup open for Pro users — pulls language pref from Convex
+// and pushes current language back if it changed.
+async function syncPrefsIfPro(isPro) {
+  if (!isPro) return;
+  // Push current language to Convex
+  chrome.runtime.sendMessage({ type: 'SYNC_PREFS', action: 'push' }, () => {});
+}
+
+// ── Init all Pro features ─────────────────────────────────────────────────────
+async function initProFeatures(isPro) {
+  await initPhotoHistory(isPro);
+  await initSchedule(isPro);
+  bindScheduleUI(isPro);
+  bindExportImport(isPro);
+  await syncPrefsIfPro(isPro);
 }
