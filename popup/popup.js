@@ -3115,8 +3115,36 @@ function hideProGate(formId, gateId) {
 
 // ── Photo History ─────────────────────────────────────────────────────────────
 async function initPhotoHistory(isPro) {
-  // Intent-moment paywall: always show history thumbnails, block Restore tap only
   hideProGate('historySection', 'historyProGate');
+
+  const section = document.getElementById('photoHistorySection');
+  if (section) {
+    // Wrap inner content in locked overlay when not Pro
+    let wrapper = section.querySelector('.pro-card-wrapper');
+    if (!wrapper) {
+      // First time — wrap the slots div
+      const slots = section.querySelector('.history-slots');
+      const emptyEl = section.querySelector('#historyEmpty');
+      if (slots) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'pro-card-wrapper';
+        const inner = document.createElement('div');
+        inner.className = 'pro-card';
+        slots.parentNode.insertBefore(wrapper, slots);
+        wrapper.appendChild(inner);
+        inner.appendChild(slots);
+        if (emptyEl) inner.appendChild(emptyEl);
+      }
+    }
+    const inner = section.querySelector('.pro-card');
+    if (inner) inner.classList.toggle('locked', !isPro);
+    if (wrapper) {
+      wrapper.onclick = !isPro ? () => showUpgradeModal('standard') : null;
+      wrapper.style.cursor = !isPro ? 'not-allowed' : 'default';
+    }
+  }
+
+  if (!isPro) return; // don't fetch history for non-pro
 
   const resp = await chrome.runtime.sendMessage({ type: 'GET_PHOTO_HISTORY' });
   if (!resp?.success) return;
@@ -3158,8 +3186,8 @@ function renderHistorySlot(containerId, items, slot) {
 
 // ── Scheduled Photos ──────────────────────────────────────────────────────────
 async function initSchedule(isPro) {
-  // Intent-moment paywall: always show the UI, block only the Save action
   hideProGate('scheduleForm', 'scheduleProGate');
+  applyProCardLock('scheduleSection', 'scheduleForm', isPro);
 
   // Load existing schedule
   const resp = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULE' });
@@ -3230,10 +3258,10 @@ function bindScheduleUI(isPro) {
 
 // ── Export / Import ───────────────────────────────────────────────────────────
 function bindExportImport(isPro) {
+  applyProCardLock('exportSection', 'exportForm', isPro);
   const exportBtn = document.getElementById('exportBtn');
   const importInput = document.getElementById('importFileInput');
   const exportGateBtn = document.getElementById('exportUpgradeBtn');
-  // Intent-moment paywall: always show UI, block only the action buttons
 
   if (exportBtn) {
     exportBtn.addEventListener('click', async () => {
@@ -3283,6 +3311,39 @@ async function syncPrefsIfPro(isPro) {
   if (!isPro) return;
   // Push current language to Convex
   chrome.runtime.sendMessage({ type: 'SYNC_PREFS', action: 'push' }, () => {});
+}
+
+
+// ── Pro card lock helper ──────────────────────────────────────────────────────
+// Wraps the inner form in a pro-card div and applies locked state when !isPro.
+// The outer wrapper catches upgrade modal clicks while inner is pointer-events:none.
+function applyProCardLock(sectionId, formId, isPro) {
+  const section = document.getElementById(sectionId);
+  const form = document.getElementById(formId);
+  if (!section || !form) return;
+
+  // Ensure wrapper exists
+  let wrapper = section.querySelector('.pro-card-wrapper');
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.className = 'pro-card-wrapper';
+    let inner = section.querySelector('.pro-card');
+    if (!inner) {
+      inner = document.createElement('div');
+      inner.className = 'pro-card';
+      form.parentNode.insertBefore(wrapper, form);
+      wrapper.appendChild(inner);
+      inner.appendChild(form);
+    } else {
+      form.parentNode.insertBefore(wrapper, inner);
+      wrapper.appendChild(inner);
+    }
+  }
+
+  const inner = section.querySelector('.pro-card');
+  if (inner) inner.classList.toggle('locked', !isPro);
+  wrapper.onclick = !isPro ? () => showUpgradeModal('standard') : null;
+  wrapper.style.cursor = !isPro ? 'not-allowed' : 'default';
 }
 
 // ── Init all Pro features ─────────────────────────────────────────────────────
