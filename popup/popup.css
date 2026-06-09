@@ -3393,3 +3393,25 @@ body {
   background: #e53935;
   color: #fff;
 }
+
+/* ── Pro card lock state ─────────────────────────────────────────── */
+.pro-card-wrapper {
+  pointer-events: all; /* wrapper catches click for upgrade modal */
+  cursor: not-allowed;
+  display: block;
+}
+.pro-card {
+  display: block;
+  transition: opacity 0.2s ease;
+}
+.pro-card.locked {
+  opacity: 0.4;
+  pointer-events: none; /* disables all child interactions */
+  user-select: none;
+}
+/* PRO badge stays full opacity always — it's the CTA anchor */
+.pro-card.locked ~ .pro-badge,
+.pro-section-header .pro-badge {
+  opacity: 1 !important;
+  pointer-events: all !important;
+}
