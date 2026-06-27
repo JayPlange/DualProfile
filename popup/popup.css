@@ -3415,3 +3415,22 @@ body {
   opacity: 1 !important;
   pointer-events: all !important;
 }
+
+/* ── World Cup 2026 theme ──────────────────────────────────────────────────── */
+#wc-banner {
+  flex-shrink: 0;
+  user-select: none;
+}
+#wc-ball-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 13px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 10;
+}
+.header-icon-wrap {
+  position: relative;
+  display: inline-block;
+}
