@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DualProfile",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "description": "Different photos for different people on WhatsApp",
   "permissions": [
     "storage",
