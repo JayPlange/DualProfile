@@ -237,26 +237,65 @@
   // ── 4. APPLY DAILY THEME ───────────────────────────────────────────────────
   function applyTheme(team) {
     const root = document.documentElement;
-    root.style.setProperty('--wc-primary',    team.primary);
-    root.style.setProperty('--wc-secondary',  team.secondary);
-    root.style.setProperty('--wc-accent',     team.accent);
-    root.style.setProperty('--wc-text',       team.textColor);
+    root.style.setProperty('--wc-primary',   team.primary);
+    root.style.setProperty('--wc-secondary', team.secondary);
+    root.style.setProperty('--wc-accent',    team.accent);
+    root.style.setProperty('--wc-text',      team.textColor);
 
-    // Header
-    const header = document.querySelector('.header');
-    if (header) {
-      header.style.background = `linear-gradient(135deg, ${team.primary} 0%, color-mix(in srgb, ${team.primary} 70%, ${team.secondary}) 100%)`;
-      header.style.backgroundImage = `${getPattern(team)}, linear-gradient(135deg, ${team.primary} 0%, color-mix(in srgb, ${team.primary} 70%, ${team.secondary}) 100%)`;
-      header.style.borderBottom = `2px solid ${team.secondary}88`;
+    // ── Full popup body — immersive background ──
+    const body = document.body;
+    body.style.background = `
+      ${getPattern(team)},
+      linear-gradient(160deg,
+        color-mix(in srgb, ${team.primary} 35%, #0d0d0d) 0%,
+        #0d0d0d 55%,
+        color-mix(in srgb, ${team.secondary} 12%, #0d0d0d) 100%
+      )`;
+    body.style.backgroundAttachment = 'fixed';
+
+    // ── Accent glow spots ──
+    if (!document.getElementById('wc-glow')) {
+      const glow = document.createElement('div');
+      glow.id = 'wc-glow';
+      glow.style.cssText = [
+        'position:fixed', 'inset:0', 'pointer-events:none', 'z-index:0',
+        `background:radial-gradient(ellipse 60% 30% at 50% 0%, ${team.primary}30 0%, transparent 70%),
+                    radial-gradient(ellipse 40% 20% at 100% 100%, ${team.secondary}18 0%, transparent 70%)`,
+      ].join(';');
+      document.body.prepend(glow);
     }
 
-    // Logo text
+    // ── Header — stronger gradient with pattern ──
+    const header = document.querySelector('.header');
+    if (header) {
+      header.style.background = `
+        ${getPattern(team)},
+        linear-gradient(135deg, ${team.primary} 0%, color-mix(in srgb, ${team.primary} 60%, ${team.secondary}) 100%)`;
+      header.style.borderBottom = `2px solid ${team.secondary}99`;
+      header.style.boxShadow = `0 4px 20px ${team.primary}55`;
+    }
+
+    // ── Logo text ──
     const logoH1  = document.querySelector('.logo-text h1');
     const tagline = document.querySelector('.tagline');
     if (logoH1)  logoH1.style.color  = team.textColor;
     if (tagline) tagline.style.color = team.textColor + 'bb';
 
-    // Football badge on logo
+    // ── Tab bar accent ──
+    const tabs = document.querySelectorAll('.tab-btn.active, .tab-btn:focus');
+    tabs.forEach(t => { t.style.borderBottomColor = team.secondary; t.style.color = team.secondary; });
+
+    // ── Cards / sections — subtle border tint ──
+    document.querySelectorAll('.photos-section, .contacts-section, .sync-section, .settings-section').forEach(el => {
+      el.style.borderTop = `1px solid ${team.secondary}22`;
+    });
+
+    // ── Accent color on active elements ──
+    document.querySelectorAll('.btn-p1, .btn-p2').forEach(btn => {
+      btn.style.boxShadow = `0 0 8px ${team.secondary}44`;
+    });
+
+    // ── Football badge on logo ──
     const iconParent = document.querySelector('.logo');
     if (iconParent && !document.getElementById('wc-ball-badge')) {
       iconParent.style.position = 'relative';
@@ -269,11 +308,9 @@
       iconParent.appendChild(badge);
     }
 
-    // Status bar accent
+    // ── Status bar ──
     const statusBar = document.querySelector('.status-bar');
-    if (statusBar) {
-      statusBar.style.borderBottom = `1px solid ${team.secondary}44`;
-    }
+    if (statusBar) statusBar.style.borderBottom = `1px solid ${team.secondary}44`;
 
     document.body.classList.add('wc-active');
   }
@@ -530,7 +567,9 @@
   // ── 10. SOUND EFFECTS (new user only, once, mutable) ──────────────────────
   function playSound(type) {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
       if (type === 'crowd') {
         // Stadium cheer — white noise burst with bandpass + envelope
         ctx.resume().then(() => {
@@ -719,12 +758,14 @@
       this.textContent = muted ? '🔇 Muted' : '🔊 Sound';
     };
 
-    // Close
+    // Close — sound plays HERE, on direct button tap (100% guaranteed user gesture)
     document.getElementById('wc-onboarding-close').onclick = async () => {
+      // Play sound synchronously on tap — this IS the user gesture
+      playSound('crowd');
+      setTimeout(() => playSound('kick'), 400);
       if (chosenTeam) await setStorage({ dp_wc_team: chosenTeam });
       await setStorage({ dp_wc_onboarding_seen: true });
       overlay.remove();
-      // Update supporting badge
       if (chosenTeam) updateSupportingBadge(chosenTeam);
     };
   }
@@ -747,7 +788,26 @@
     const el = document.getElementById('wc-supporting');
     if (!el) return;
     const found = SELECTABLE_TEAMS.find(t => t.country === teamName);
-    if (found) {
+    if (!found) return;
+
+    const todayTeam = getTodayTeam();
+    const isYourTeamToday = todayTeam && (
+      todayTeam.country === teamName ||
+      (teamName === 'Other' && todayTeam)
+    );
+
+    // If today is their team's day — special celebration badge
+    if (todayTeam && todayTeam.country === teamName) {
+      el.innerHTML = `${found.flag} Your team is playing today! 🎉`;
+      el.style.background = `${todayTeam.secondary}33`;
+      el.style.border = `1px solid ${todayTeam.secondary}88`;
+      el.style.color = todayTeam.secondary === '#FFFFFF' ? '#e5e7eb' : todayTeam.secondary;
+      el.style.fontWeight = '700';
+      el.style.padding = '3px 10px';
+      el.style.display = 'inline-block';
+      // Extra confetti burst for their team day
+      launchWCConfetti(todayTeam);
+    } else {
       el.textContent = `Supporting ${found.flag} ${found.country}`;
       el.style.display = 'inline-block';
     }
@@ -851,19 +911,34 @@
     const wcUpdateSeen = data.dp_wc_update_seen;
 
     if (!wcOnboardingSeen && !onboardingDone) {
-      // Fresh install — pre-warm AudioContext immediately (user opened popup = user gesture)
-      // This must happen synchronously before any async/setTimeout breaks the gesture chain
-      try {
-        const warmCtx = new (window.AudioContext || window.webkitAudioContext)();
-        warmCtx.resume().then(() => warmCtx.close());
-      } catch(e) {}
-      setTimeout(() => showNewUserWCOnboarding(team), 1200);
+      setTimeout(() => showNewUserWCOnboarding(team), 800);
     } else if (!wcUpdateSeen && onboardingDone) {
       // Existing user — show one-time update modal
       setTimeout(() => showExistingUserModal(team), 800);
     } else {
       // Returning WC user — handle special days
       await handleSpecialDay(team);
+      // Check if today is their chosen team's day
+      const teamData = await getStorage(['dp_wc_team']);
+      if (teamData.dp_wc_team && teamData.dp_wc_team === team.country) {
+        // Their team is playing today — show a toast
+        const toast = document.createElement('div');
+        toast.style.cssText = [
+          'position:fixed', 'bottom:60px', 'left:50%',
+          'transform:translateX(-50%)',
+          `background:${team.secondary}`, 'color:#1a1a1a',
+          'font-size:12px', 'font-weight:700',
+          'padding:8px 16px', 'border-radius:20px',
+          'z-index:9999', 'white-space:nowrap',
+          'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+          'animation:wcFadeIn 0.3s ease',
+        ].join(';');
+        const found = SELECTABLE_TEAMS.find(t => t.country === team.country);
+        toast.textContent = `${found ? found.flag : team.flag} Your team is playing today!`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+        launchWCConfetti(team);
+      }
     }
   }
 
