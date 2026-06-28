@@ -532,27 +532,28 @@
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       if (type === 'crowd') {
-        // Stadium cheer — white noise burst with envelope
-        const bufSize = ctx.sampleRate * 0.8;
-        const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        const gainNode = ctx.createGain();
-        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.1);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-        // Band pass to make it sound less like static
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = 800;
-        filter.Q.value = 0.5;
-        src.connect(filter);
-        filter.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        src.start();
-        src.stop(ctx.currentTime + 0.8);
+        // Stadium cheer — white noise burst with bandpass + envelope
+        ctx.resume().then(() => {
+          const bufSize = Math.floor(ctx.sampleRate * 1.2);
+          const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          const gainNode = ctx.createGain();
+          gainNode.gain.setValueAtTime(0, ctx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.12);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.value = 800;
+          filter.Q.value = 0.4;
+          src.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          src.start();
+          src.stop(ctx.currentTime + 1.2);
+        });
       } else if (type === 'kick') {
         // Football kick — short sine sweep down
         const osc = ctx.createOscillator();
@@ -642,32 +643,37 @@
         padding:28px 20px;max-width:310px;width:92%;text-align:center;color:#fff;
         box-shadow:0 24px 80px rgba(0,0,0,0.7);
         position:relative;
+        max-height:90vh;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+        scrollbar-width:thin;
+        scrollbar-color:${team.secondary}44 transparent;
       ">
         <button id="wc-mute-btn" style="
           position:absolute;top:12px;right:12px;background:rgba(255,255,255,0.1);
           border:none;border-radius:8px;padding:4px 8px;color:#ccc;font-size:10px;cursor:pointer;
         ">${isMuted ? '🔇 Muted' : '🔊 Sound'}</button>
 
-        <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.6;margin-bottom:10px;">
+        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;opacity:0.6;margin-bottom:6px;">
           ⚽ World Cup 2026 Edition
         </div>
-        <div style="font-size:52px;margin-bottom:6px;">🏟️</div>
-        <div style="font-size:20px;font-weight:800;line-height:1.3;margin-bottom:6px;">
+        <div style="font-size:40px;margin-bottom:4px;">🏟️</div>
+        <div style="font-size:18px;font-weight:800;line-height:1.3;margin-bottom:4px;">
           Welcome to<br>World Cup Edition.
         </div>
-        <div style="font-size:13px;opacity:0.7;margin-bottom:20px;line-height:1.6;">
-          22 countries.<br>22 identities.
+        <div style="font-size:12px;opacity:0.7;margin-bottom:12px;line-height:1.5;">
+          22 countries. 22 identities.
         </div>
 
-        <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:12px;margin-bottom:20px;">
-          <div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Today's Team</div>
-          <div style="font-size:36px;">${team.flag}</div>
-          <div style="font-size:17px;font-weight:700;color:${team.secondary};">${team.country}</div>
-          <div style="font-size:11px;opacity:0.6;font-style:italic;margin-top:4px;">"${team.slogan}"</div>
+        <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:10px;margin-bottom:12px;">
+          <div style="font-size:10px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Today's Team</div>
+          <div style="font-size:28px;">${team.flag}</div>
+          <div style="font-size:16px;font-weight:700;color:${team.secondary};">${team.country}</div>
+          <div style="font-size:10px;opacity:0.6;font-style:italic;margin-top:2px;">"${team.slogan}"</div>
         </div>
 
-        <div style="font-size:12px;opacity:0.7;margin-bottom:12px;font-weight:600;">Which team are you supporting?</div>
-        <div id="wc-team-select" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:20px;">
+        <div style="font-size:11px;opacity:0.7;margin-bottom:8px;font-weight:600;">Which team are you supporting?</div>
+        <div id="wc-team-select" style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-bottom:14px;">
           ${SELECTABLE_TEAMS.map(t => `
             <button class="wc-team-btn" data-team="${t.country}" style="
               padding:6px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.2);
@@ -678,9 +684,10 @@
         </div>
 
         <button id="wc-onboarding-close" style="
-          width:100%;padding:13px;border:none;border-radius:12px;
+          width:100%;padding:11px;border:none;border-radius:12px;
           background:${team.secondary};color:#1a1a1a;
           font-size:14px;font-weight:800;cursor:pointer;
+          margin-top:2px;
         ">Let's go! ⚽</button>
       </div>`;
 
@@ -844,7 +851,12 @@
     const wcUpdateSeen = data.dp_wc_update_seen;
 
     if (!wcOnboardingSeen && !onboardingDone) {
-      // Fresh install during tournament — show WC new-user onboarding
+      // Fresh install — pre-warm AudioContext immediately (user opened popup = user gesture)
+      // This must happen synchronously before any async/setTimeout breaks the gesture chain
+      try {
+        const warmCtx = new (window.AudioContext || window.webkitAudioContext)();
+        warmCtx.resume().then(() => warmCtx.close());
+      } catch(e) {}
       setTimeout(() => showNewUserWCOnboarding(team), 1200);
     } else if (!wcUpdateSeen && onboardingDone) {
       // Existing user — show one-time update modal
