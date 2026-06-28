@@ -571,27 +571,59 @@
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       if (type === 'crowd') {
-        // Stadium cheer — white noise burst with bandpass + envelope
+        // Stadium GOAAAL roar — 3 seconds, multi-layer, loud
         ctx.resume().then(() => {
-          const bufSize = Math.floor(ctx.sampleRate * 1.2);
-          const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-          const data = buf.getChannelData(0);
-          for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          const gainNode = ctx.createGain();
-          gainNode.gain.setValueAtTime(0, ctx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.12);
-          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
-          const filter = ctx.createBiquadFilter();
-          filter.type = 'bandpass';
-          filter.frequency.value = 800;
-          filter.Q.value = 0.4;
-          src.connect(filter);
-          filter.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          src.start();
-          src.stop(ctx.currentTime + 1.2);
+          const dur = 3.0;
+          const sr = ctx.sampleRate;
+          const master = ctx.createGain();
+          master.connect(ctx.destination);
+
+          // Layer 1 — low crowd rumble (bandpass ~300Hz)
+          const buf1 = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+          const d1 = buf1.getChannelData(0);
+          for (let i = 0; i < d1.length; i++) d1[i] = (Math.random() * 2 - 1);
+          const s1 = ctx.createBufferSource(); s1.buffer = buf1;
+          const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 300; f1.Q.value = 0.8;
+          const g1 = ctx.createGain();
+          g1.gain.setValueAtTime(0, ctx.currentTime);
+          g1.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 0.08);
+          g1.gain.setValueAtTime(0.55, ctx.currentTime + 1.8);
+          g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          s1.connect(f1); f1.connect(g1); g1.connect(master);
+          s1.start(); s1.stop(ctx.currentTime + dur);
+
+          // Layer 2 — mid crowd cheer (bandpass ~900Hz)
+          const buf2 = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+          const d2 = buf2.getChannelData(0);
+          for (let i = 0; i < d2.length; i++) d2[i] = (Math.random() * 2 - 1);
+          const s2 = ctx.createBufferSource(); s2.buffer = buf2;
+          const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 900; f2.Q.value = 0.5;
+          const g2 = ctx.createGain();
+          g2.gain.setValueAtTime(0, ctx.currentTime);
+          g2.gain.linearRampToValueAtTime(0.45, ctx.currentTime + 0.12);
+          g2.gain.setValueAtTime(0.45, ctx.currentTime + 2.0);
+          g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          s2.connect(f2); f2.connect(g2); g2.connect(master);
+          s2.start(); s2.stop(ctx.currentTime + dur);
+
+          // Layer 3 — high excitement shimmer (bandpass ~2500Hz, quieter)
+          const buf3 = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+          const d3 = buf3.getChannelData(0);
+          for (let i = 0; i < d3.length; i++) d3[i] = (Math.random() * 2 - 1);
+          const s3 = ctx.createBufferSource(); s3.buffer = buf3;
+          const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.frequency.value = 2500; f3.Q.value = 0.3;
+          const g3 = ctx.createGain();
+          g3.gain.setValueAtTime(0, ctx.currentTime);
+          g3.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.15);
+          g3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          s3.connect(f3); f3.connect(g3); g3.connect(master);
+          s3.start(); s3.stop(ctx.currentTime + dur);
+
+          // Master volume swell — peaks at 0.9 at 0.3s, holds, fades
+          master.gain.setValueAtTime(0, ctx.currentTime);
+          master.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 0.3);
+          master.gain.setValueAtTime(0.9, ctx.currentTime + 1.5);
+          master.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
         });
       } else if (type === 'kick') {
         // Football kick — short sine sweep down
@@ -849,6 +881,10 @@
         from { opacity:0; transform:scale(0.96); }
         to   { opacity:1; transform:scale(1); }
       }
+      @keyframes wcSpinSlow {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
       @keyframes wcPulse {
         0%,100% { transform:scale(1); }
         50%      { transform:scale(1.05); }
@@ -860,7 +896,8 @@
         animation: wcFadeIn 0.3s ease;
       }
       #wc-ball-badge {
-        animation: wcPulse 2s ease-in-out infinite;
+        animation: wcSpinSlow 6s linear infinite;
+        display: inline-block;
       }
       .wc-team-btn:hover {
         opacity: 0.85;
