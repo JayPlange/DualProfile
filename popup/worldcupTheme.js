@@ -171,16 +171,6 @@
     },
   ];
 
-  const SELECTABLE_TEAMS = [
-    { country: 'Ghana',     flag: '🇬🇭' },
-    { country: 'Brazil',    flag: '🇧🇷' },
-    { country: 'Argentina', flag: '🇦🇷' },
-    { country: 'Germany',   flag: '🇩🇪' },
-    { country: 'France',    flag: '🇫🇷' },
-    { country: 'Portugal',  flag: '🇵🇹' },
-    { country: 'Other',     flag: '⚽'  },
-  ];
-
   // ── 2. HELPERS ─────────────────────────────────────────────────────────────
   function todayStr() {
     const d = new Date();
@@ -696,14 +686,13 @@
 
   // ── 12. NEW USER ONBOARDING ────────────────────────────────────────────────
   async function showNewUserWCOnboarding(team) {
-    const data = await getStorage(['dp_wc_onboarding_seen', 'dp_wc_muted', 'dp_wc_team']);
+    const data = await getStorage(['dp_wc_onboarding_seen', 'dp_wc_muted']);
     if (data.dp_wc_onboarding_seen) return;
 
     const overlay = document.createElement('div');
     overlay.id = 'wc-onboarding';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.92);backdrop-filter:blur(6px);animation:wcFadeIn 0.4s ease;';
 
-    const selectedTeam = data.dp_wc_team || null;
     const isMuted = data.dp_wc_muted || false;
 
     overlay.innerHTML = `
@@ -714,51 +703,34 @@
         padding:28px 20px;max-width:310px;width:92%;text-align:center;color:#fff;
         box-shadow:0 24px 80px rgba(0,0,0,0.7);
         position:relative;
-        max-height:90vh;
-        overflow-y:auto;
-        overscroll-behavior:contain;
-        scrollbar-width:thin;
-        scrollbar-color:${team.secondary}44 transparent;
       ">
         <button id="wc-mute-btn" style="
           position:absolute;top:12px;right:12px;background:rgba(255,255,255,0.1);
           border:none;border-radius:8px;padding:4px 8px;color:#ccc;font-size:10px;cursor:pointer;
         ">${isMuted ? '🔇 Muted' : '🔊 Sound'}</button>
 
-        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;opacity:0.6;margin-bottom:6px;">
+        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;opacity:0.6;margin-bottom:10px;">
           ⚽ World Cup 2026 Edition
         </div>
-        <div style="font-size:40px;margin-bottom:4px;">🏟️</div>
-        <div style="font-size:18px;font-weight:800;line-height:1.3;margin-bottom:4px;">
+        <div style="font-size:52px;margin-bottom:8px;">🏟️</div>
+        <div style="font-size:20px;font-weight:800;line-height:1.3;margin-bottom:8px;">
           Welcome to<br>World Cup Edition.
         </div>
-        <div style="font-size:12px;opacity:0.7;margin-bottom:12px;line-height:1.5;">
-          22 countries. 22 identities.
+        <div style="font-size:13px;opacity:0.7;margin-bottom:20px;line-height:1.6;">
+          22 countries.<br>22 identities.
         </div>
 
-        <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:10px;margin-bottom:12px;">
-          <div style="font-size:10px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Today's Team</div>
-          <div style="font-size:28px;">${team.flag}</div>
-          <div style="font-size:16px;font-weight:700;color:${team.secondary};">${team.country}</div>
-          <div style="font-size:10px;opacity:0.6;font-style:italic;margin-top:2px;">"${team.slogan}"</div>
-        </div>
-
-        <div style="font-size:11px;opacity:0.7;margin-bottom:8px;font-weight:600;">Which team are you supporting?</div>
-        <div id="wc-team-select" style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-bottom:14px;">
-          ${SELECTABLE_TEAMS.map(t => `
-            <button class="wc-team-btn" data-team="${t.country}" style="
-              padding:6px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.2);
-              background:rgba(255,255,255,0.07);color:#fff;font-size:12px;cursor:pointer;
-              transition:all 0.15s;
-            ">${t.flag} ${t.country}</button>
-          `).join('')}
+        <div style="background:rgba(255,255,255,0.07);border-radius:14px;padding:16px;margin-bottom:24px;">
+          <div style="font-size:10px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Today's Team</div>
+          <div style="font-size:44px;margin-bottom:4px;">${team.flag}</div>
+          <div style="font-size:20px;font-weight:800;color:${team.secondary};margin-bottom:4px;">${team.country}</div>
+          <div style="font-size:11px;opacity:0.65;font-style:italic;">"${team.slogan}"</div>
         </div>
 
         <button id="wc-onboarding-close" style="
-          width:100%;padding:11px;border:none;border-radius:12px;
+          width:100%;padding:14px;border:none;border-radius:12px;
           background:${team.secondary};color:#1a1a1a;
-          font-size:14px;font-weight:800;cursor:pointer;
-          margin-top:2px;
+          font-size:15px;font-weight:800;cursor:pointer;
         ">Let's go! ⚽</button>
       </div>`;
 
@@ -771,18 +743,6 @@
       setTimeout(() => playSound('kick'), 600);
     }
 
-    // Team selection
-    const teamBtns = overlay.querySelectorAll('.wc-team-btn');
-    let chosenTeam = selectedTeam;
-    teamBtns.forEach(btn => {
-      if (btn.dataset.team === selectedTeam) highlightTeamBtn(btn, team);
-      btn.addEventListener('click', () => {
-        teamBtns.forEach(b => unhighlightTeamBtn(b));
-        highlightTeamBtn(btn, team);
-        chosenTeam = btn.dataset.team;
-      });
-    });
-
     // Mute toggle
     document.getElementById('wc-mute-btn').onclick = async function() {
       const muted = !((await getStorage(['dp_wc_muted'])).dp_wc_muted);
@@ -790,85 +750,13 @@
       this.textContent = muted ? '🔇 Muted' : '🔊 Sound';
     };
 
-    // Close — sound plays HERE, on direct button tap (100% guaranteed user gesture)
+    // Close — sound plays on button tap (guaranteed user gesture)
     document.getElementById('wc-onboarding-close').onclick = async () => {
-      // Play sound synchronously on tap — this IS the user gesture
       playSound('crowd');
       setTimeout(() => playSound('kick'), 400);
-      if (chosenTeam) await setStorage({ dp_wc_team: chosenTeam });
       await setStorage({ dp_wc_onboarding_seen: true });
       overlay.remove();
-      if (chosenTeam) updateSupportingBadge(chosenTeam);
     };
-  }
-
-  function highlightTeamBtn(btn, team) {
-    btn.style.background = team.secondary;
-    btn.style.color = '#1a1a1a';
-    btn.style.borderColor = team.secondary;
-    btn.style.fontWeight = '700';
-  }
-  function unhighlightTeamBtn(btn) {
-    btn.style.background = 'rgba(255,255,255,0.07)';
-    btn.style.color = '#fff';
-    btn.style.borderColor = 'rgba(255,255,255,0.2)';
-    btn.style.fontWeight = '400';
-  }
-
-  // ── 13. SUPPORTING BADGE ───────────────────────────────────────────────────
-  async function updateSupportingBadge(teamName) {
-    const el = document.getElementById('wc-supporting');
-    if (!el) return;
-    const found = SELECTABLE_TEAMS.find(t => t.country === teamName);
-    if (!found) return;
-
-    const todayTeam = getTodayTeam();
-    const isYourTeamToday = todayTeam && (
-      todayTeam.country === teamName ||
-      (teamName === 'Other' && todayTeam)
-    );
-
-    // If today is their team's day — special celebration badge
-    if (todayTeam && todayTeam.country === teamName) {
-      el.innerHTML = `${found.flag} Your team is playing today! 🎉`;
-      el.style.background = `${todayTeam.secondary}33`;
-      el.style.border = `1px solid ${todayTeam.secondary}88`;
-      el.style.color = todayTeam.secondary === '#FFFFFF' ? '#e5e7eb' : todayTeam.secondary;
-      el.style.fontWeight = '700';
-      el.style.padding = '3px 10px';
-      el.style.display = 'inline-block';
-      // Extra confetti burst for their team day
-      launchWCConfetti(todayTeam);
-    } else {
-      el.textContent = `Supporting ${found.flag} ${found.country}`;
-      el.style.display = 'inline-block';
-    }
-  }
-
-  async function injectSupportingBadge(team) {
-    const data = await getStorage(['dp_wc_team']);
-    const supporting = data.dp_wc_team;
-    if (!supporting) return;
-
-    const banner = document.getElementById('wc-banner');
-    if (!banner) return;
-
-    const found = SELECTABLE_TEAMS.find(t => t.country === supporting);
-    if (!found) return;
-
-    const badge = document.createElement('span');
-    badge.id = 'wc-supporting';
-    badge.style.cssText = `
-      display:inline-block;
-      background:${team.secondary}22;
-      border:1px solid ${team.secondary}55;
-      color:${team.secondary};
-      font-size:9px;font-weight:700;
-      padding:2px 6px;border-radius:4px;
-      margin-left:6px;
-    `;
-    badge.textContent = `${found.flag} ${found.country}`;
-    banner.querySelector('span')?.appendChild(badge);
   }
 
   // ── 14. CSS ANIMATIONS ─────────────────────────────────────────────────────
@@ -899,10 +787,7 @@
         animation: wcSpinSlow 6s linear infinite;
         display: inline-block;
       }
-      .wc-team-btn:hover {
-        opacity: 0.85;
-        transform: translateY(-1px);
-      }
+
       #wc-share-btn:hover {
         opacity: 0.9;
         transform: translateY(-1px);
@@ -938,9 +823,6 @@
     // Unlock today in collection
     await unlockToday(team);
 
-    // Supporting badge
-    await injectSupportingBadge(team);
-
     // Determine if new install or existing user
     const data = await getStorage(['dp_onboarding_complete', 'dp_wc_onboarding_seen', 'dp_wc_update_seen']);
     const onboardingDone = data.dp_onboarding_complete;
@@ -948,34 +830,14 @@
     const wcUpdateSeen = data.dp_wc_update_seen;
 
     if (!wcOnboardingSeen && !onboardingDone) {
-      setTimeout(() => showNewUserWCOnboarding(team), 800);
+      setTimeout(() => showNewUserWCOnboarding(team), 600);
     } else if (!wcUpdateSeen && onboardingDone) {
       // Existing user — show one-time update modal
       setTimeout(() => showExistingUserModal(team), 800);
     } else {
       // Returning WC user — handle special days
       await handleSpecialDay(team);
-      // Check if today is their chosen team's day
-      const teamData = await getStorage(['dp_wc_team']);
-      if (teamData.dp_wc_team && teamData.dp_wc_team === team.country) {
-        // Their team is playing today — show a toast
-        const toast = document.createElement('div');
-        toast.style.cssText = [
-          'position:fixed', 'bottom:60px', 'left:50%',
-          'transform:translateX(-50%)',
-          `background:${team.secondary}`, 'color:#1a1a1a',
-          'font-size:12px', 'font-weight:700',
-          'padding:8px 16px', 'border-radius:20px',
-          'z-index:9999', 'white-space:nowrap',
-          'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
-          'animation:wcFadeIn 0.3s ease',
-        ].join(';');
-        const found = SELECTABLE_TEAMS.find(t => t.country === team.country);
-        toast.textContent = `${found ? found.flag : team.flag} Your team is playing today!`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
-        launchWCConfetti(team);
-      }
+
     }
   }
 
