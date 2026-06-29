@@ -18,148 +18,147 @@
       primary: '#006B3F', secondary: '#FCD116', accent: '#CE1126',
       textColor: '#FFFFFF',
       slogan: 'Stand proudly.',
-      pattern: 'kente',
-      specialDay: 'opening',
+      pattern: 'kente',       // Akan kente weave — Ghana's iconic textile heritage
     },
     {
       day: 2, date: '2026-06-29', country: 'Brazil', flag: '🇧🇷',
       primary: '#009C3B', secondary: '#FFDF00', accent: '#002776',
       textColor: '#FFFFFF',
       slogan: 'Play beautifully.',
-      pattern: 'stadium',
+      pattern: 'carnival',    // Brazilian carnival — curves, rhythm, movement
     },
     {
       day: 3, date: '2026-06-30', country: 'France', flag: '🇫🇷',
       primary: '#002395', secondary: '#FFFFFF', accent: '#ED2939',
       textColor: '#FFFFFF',
       slogan: 'Be brilliant.',
-      pattern: 'diagonal',
+      pattern: 'fleur',       // Fleur-de-lis — French royal heraldry
     },
     {
       day: 4, date: '2026-07-01', country: 'Argentina', flag: '🇦🇷',
       primary: '#74ACDF', secondary: '#FFFFFF', accent: '#74ACDF',
-      textColor: '#002D62',
+      textColor: '#1a1a1a',
       slogan: 'Be unforgettable.',
-      pattern: 'stripes',
+      pattern: 'sun',         // Sol de Mayo — Argentine sun symbol
     },
     {
       day: 5, date: '2026-07-02', country: 'Spain', flag: '🇪🇸',
       primary: '#AA151B', secondary: '#F1BF00', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Own every room.',
-      pattern: 'diamond',
+      pattern: 'mosaic',      // Moorish mosaic tile — Alhambra heritage
     },
     {
       day: 6, date: '2026-07-03', country: 'Portugal', flag: '🇵🇹',
       primary: '#006600', secondary: '#FF0000', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Show your best self.',
-      pattern: 'cross',
+      pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
     },
     {
       day: 7, date: '2026-07-04', country: 'Germany', flag: '🇩🇪',
       primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
       textColor: '#FFFFFF',
       slogan: 'Precision matters.',
-      pattern: 'stripes',
+      pattern: 'bauhaus',     // Bauhaus — German modernist geometry
     },
     {
       day: 8, date: '2026-07-05', country: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
       primary: '#1C1C1C', secondary: '#CF081F', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Keep it classic.',
-      pattern: 'cross',
+      pattern: 'cross',       // St George's Cross — English heritage
     },
     {
       day: 9, date: '2026-07-06', country: 'Netherlands', flag: '🇳🇱',
-      primary: '#E77729', secondary: '#1C1C1C', accent: '#FFFFFF',
+      primary: '#E77729', secondary: '#FFFFFF', accent: '#1C1C1C',
       textColor: '#FFFFFF',
       slogan: 'Be bold.',
-      pattern: 'diagonal',
+      pattern: 'tulip',       // Dutch tulip — Golden Age floral heritage
     },
     {
       day: 10, date: '2026-07-07', country: 'Japan', flag: '🇯🇵',
       primary: '#BC002D', secondary: '#FFFFFF', accent: '#BC002D',
       textColor: '#FFFFFF',
       slogan: 'Thoughtful identities.',
-      pattern: 'rising-sun',
+      pattern: 'seigaiha',    // Seigaiha wave — traditional Japanese pattern
     },
     {
       day: 11, date: '2026-07-08', country: 'USA', flag: '🇺🇸',
       primary: '#002868', secondary: '#BF0A30', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Make your mark.',
-      pattern: 'stars',
+      pattern: 'stars',       // Stars and Stripes — American iconography
     },
     {
       day: 12, date: '2026-07-09', country: 'Mexico', flag: '🇲🇽',
       primary: '#006847', secondary: '#CE1126', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Show your colors.',
-      pattern: 'diamond',
+      pattern: 'aztec',       // Aztec geometric — pre-Columbian heritage
     },
     {
       day: 13, date: '2026-07-10', country: 'Belgium', flag: '🇧🇪',
       primary: '#1C1C1C', secondary: '#FAE042', accent: '#EF3340',
       textColor: '#FFFFFF',
       slogan: 'Quality over quantity.',
-      pattern: 'stripes',
+      pattern: 'lace',        // Belgian lace — Bruges lace-making heritage
     },
     {
       day: 14, date: '2026-07-11', country: 'Colombia', flag: '🇨🇴',
       primary: '#FCD116', secondary: '#003087', accent: '#CE1126',
       textColor: '#1C1C1C',
       slogan: 'Express yourself.',
-      pattern: 'diagonal',
+      pattern: 'mochila',     // Wayuu mochila bag — indigenous weave pattern
     },
     {
       day: 15, date: '2026-07-12', country: 'Morocco', flag: '🇲🇦',
       primary: '#C1272D', secondary: '#006233', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Defy expectations.',
-      pattern: 'star',
+      pattern: 'zellige',     // Zellige tilework — Moroccan geometric mosaic
     },
     {
       day: 16, date: '2026-07-13', country: 'Switzerland', flag: '🇨🇭',
       primary: '#D52B1E', secondary: '#FFFFFF', accent: '#D52B1E',
       textColor: '#FFFFFF',
-      slogan: 'Neutral on the outside. Bold within.',
-      pattern: 'cross',
+      slogan: 'Bold within.',
+      pattern: 'cross',       // Swiss cross — clean, precise
     },
     {
       day: 17, date: '2026-07-14', country: 'Senegal', flag: '🇸🇳',
       primary: '#00853F', secondary: '#FDEF42', accent: '#E31B23',
       textColor: '#FFFFFF',
       slogan: 'Rise and shine.',
-      pattern: 'diagonal',
+      pattern: 'boubou',      // Boubou textile — West African flowing pattern
     },
     {
       day: 18, date: '2026-07-15', country: 'Norway', flag: '🇳🇴',
-      primary: '#EF2B2D', secondary: '#002868', accent: '#FFFFFF',
+      primary: '#EF2B2D', secondary: '#FFFFFF', accent: '#002868',
       textColor: '#FFFFFF',
       slogan: 'Stand out from the crowd.',
-      pattern: 'cross',
+      pattern: 'viking',      // Viking rune / Norse geometric heritage
     },
     {
       day: 19, date: '2026-07-16', country: 'Australia', flag: '🇦🇺',
       primary: '#00843D', secondary: '#FFD700', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Go your own way.',
-      pattern: 'stars',
+      pattern: 'aboriginal',  // Aboriginal dot art — indigenous heritage
     },
     {
       day: 20, date: '2026-07-17', country: 'Canada', flag: '🇨🇦',
       primary: '#CC0000', secondary: '#FFFFFF', accent: '#CC0000',
       textColor: '#FFFFFF',
       slogan: 'Show up everywhere.',
-      pattern: 'maple',
+      pattern: 'maple',       // Maple leaf — Canadian national symbol
     },
     {
       day: 21, date: '2026-07-18', country: 'Egypt', flag: '🇪🇬',
-      primary: '#C8102E', secondary: '#1C1C1C', accent: '#FFFFFF',
+      primary: '#C8102E', secondary: '#C09A00', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Timeless presence.',
-      pattern: 'diamond',
+      pattern: 'hieroglyph',  // Ancient Egyptian geometric — pyramid/papyrus
     },
     {
       day: 22, date: '2026-07-19', country: 'Final Day', flag: '🏆',
@@ -200,26 +199,131 @@
   // ── 3. CSS PATTERN GENERATORS ──────────────────────────────────────────────
   function getPattern(team) {
     const p = team.pattern;
-    const c1 = team.secondary + '18'; // very subtle
-    const c2 = team.primary   + '22';
+    const c1 = team.secondary + '20';
+    const c2 = team.primary   + '28';
+    const c3 = team.accent    + '15';
 
     const patterns = {
-      kente: `repeating-linear-gradient(45deg, ${c1} 0px, ${c1} 4px, transparent 4px, transparent 12px),
-              repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 8px)`,
-      stadium: `repeating-linear-gradient(0deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 20px)`,
+      // Ivory Coast — Akan kente: bold interlocking diagonal strips
+      kente: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 5px, transparent 5px, transparent 15px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 3px, transparent 3px, transparent 10px),
+        repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 2px, transparent 2px, transparent 20px)`,
+
+      // Brazil — carnival curves: flowing arcs like samba movement
+      carnival: `
+        repeating-radial-gradient(ellipse 40px 20px at 0% 50%, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 40px),
+        repeating-radial-gradient(ellipse 40px 20px at 50% 0%, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 40px)`,
+
+      // France — fleur-de-lis inspired: elegant vertical + diagonal
+      fleur: `
+        repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(60deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(-60deg,${c3} 0px, ${c3} 1px, transparent 1px, transparent 24px)`,
+
+      // Argentina — Sol de Mayo: radial rays from centre
+      sun: `
+        repeating-conic-gradient(${c1} 0deg, ${c1} 6deg, transparent 6deg, transparent 12deg),
+        radial-gradient(circle at 50% 50%, ${c2} 0%, transparent 45%)`,
+
+      // Spain — Moorish mosaic: interlocking star geometry
+      mosaic: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 2px, transparent 2px, transparent 12px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 12px),
+        repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 1px, transparent 1px, transparent 12px)`,
+
+      // Portugal — azulejo: square tile grid with diagonal accents
+      azulejo: `
+        repeating-linear-gradient(0deg,  ${c1} 0px, ${c1} 1px, transparent 1px, transparent 18px),
+        repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 18px),
+        repeating-linear-gradient(45deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 18px)`,
+
+      // Germany — Bauhaus: strict horizontal bands + vertical offset
+      bauhaus: `
+        repeating-linear-gradient(0deg,  ${c1} 0px, ${c1} 3px, transparent 3px, transparent 20px),
+        repeating-linear-gradient(90deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 30px)`,
+
+      // England / Switzerland — St George's Cross: clean perpendicular grid
+      cross: `
+        repeating-linear-gradient(0deg,  ${c1} 0px, ${c1} 2px, transparent 2px, transparent 20px),
+        repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 20px)`,
+
+      // Netherlands — Dutch tulip: radial petal bursts
+      tulip: `
+        repeating-radial-gradient(circle 8px at 50% 50%, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 16px),
+        repeating-linear-gradient(90deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 32px)`,
+
+      // Japan — seigaiha overlapping wave scales
+      seigaiha: `
+        repeating-radial-gradient(circle 14px at 0% 14px, transparent 12px, ${c1} 12px, ${c1} 14px, transparent 14px),
+        repeating-radial-gradient(circle 14px at 14px 0, transparent 12px, ${c2} 12px, ${c2} 14px, transparent 14px)`,
+
+      // USA — stars and stripes: horizontal lines + dot grid
+      stars: `
+        repeating-linear-gradient(0deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 14px),
+        radial-gradient(circle 2px at 7px 7px, ${c2} 100%, transparent 100%)`,
+
+      // Mexico — Aztec geometric: bold diagonal stepped pattern
+      aztec: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 4px, transparent 4px, transparent 8px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 16px),
+        repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 1px, transparent 1px, transparent 8px)`,
+
+      // Belgium — lace: fine diamond mesh like Bruges lace
+      lace: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 1px, transparent 1px, transparent 8px),
+        repeating-linear-gradient(-45deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 8px)`,
+
+      // Colombia — Wayuu mochila: bold zigzag weave
+      mochila: `
+        repeating-linear-gradient(60deg,  ${c1} 0px, ${c1} 3px, transparent 3px, transparent 10px),
+        repeating-linear-gradient(-60deg, ${c2} 0px, ${c2} 3px, transparent 3px, transparent 10px),
+        repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 1px, transparent 1px, transparent 10px)`,
+
+      // Morocco — zellige: fine star-and-polygon mosaic
+      zellige: `
+        repeating-linear-gradient(30deg,  ${c1} 0px, ${c1} 1px, transparent 1px, transparent 10px),
+        repeating-linear-gradient(-30deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 10px),
+        repeating-linear-gradient(90deg,  ${c1} 0px, ${c1} 1px, transparent 1px, transparent 10px)`,
+
+      // Senegal — boubou textile: flowing vertical waves
+      boubou: `
+        repeating-linear-gradient(170deg, ${c1} 0px, ${c1} 3px, transparent 3px, transparent 12px),
+        repeating-linear-gradient(10deg,  ${c2} 0px, ${c2} 2px, transparent 2px, transparent 18px)`,
+
+      // Norway — Viking runes: angular runic chevron pattern
+      viking: `
+        repeating-linear-gradient(60deg,  ${c1} 0px, ${c1} 3px, transparent 3px, transparent 12px),
+        repeating-linear-gradient(-60deg, ${c1} 0px, ${c1} 3px, transparent 3px, transparent 12px),
+        repeating-linear-gradient(0deg,   ${c2} 0px, ${c2} 1px, transparent 1px, transparent 24px)`,
+
+      // Australia — Aboriginal dot art: scattered dot clusters
+      aboriginal: `
+        radial-gradient(circle 2px at 8px 8px,   ${c1} 100%, transparent 100%),
+        radial-gradient(circle 3px at 24px 16px,  ${c2} 100%, transparent 100%),
+        radial-gradient(circle 2px at 16px 24px,  ${c1} 100%, transparent 100%),
+        radial-gradient(circle 1px at 4px 20px,   ${c3} 100%, transparent 100%)`,
+
+      // Canada — maple leaf silhouette via angled geometry
+      maple: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 2px, transparent 2px, transparent 16px),
+        repeating-linear-gradient(-45deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 16px),
+        radial-gradient(circle 1px at 8px 8px, ${c2} 100%, transparent 100%)`,
+
+      // Egypt — hieroglyphic: papyrus horizontal rows + vertical columns
+      hieroglyph: `
+        repeating-linear-gradient(0deg,  ${c1} 0px, ${c1} 1px, transparent 1px, transparent 16px),
+        repeating-linear-gradient(90deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(45deg, ${c3} 0px, ${c3} 1px, transparent 1px, transparent 24px)`,
+
+      // Final Day — full confetti burst
+      confetti: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 4px, transparent 4px, transparent 10px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 4px, transparent 4px, transparent 10px),
+        repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 2px, transparent 2px, transparent 10px)`,
+
+      // Fallback
       diagonal: `repeating-linear-gradient(135deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 14px)`,
-      stripes: `repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 3px, transparent 3px, transparent 18px)`,
-      cross: `repeating-linear-gradient(0deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 16px),
-              repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 16px)`,
-      'rising-sun': `radial-gradient(circle at 50% 0%, ${c1} 0%, transparent 60%)`,
-      stars: `radial-gradient(circle, ${c1} 1px, transparent 1px)`,
-      diamond: `repeating-linear-gradient(45deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 10px),
-                repeating-linear-gradient(-45deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 10px)`,
-      star: `repeating-linear-gradient(30deg, ${c1} 0px, ${c1} 1px, transparent 1px, transparent 12px)`,
-      maple: `radial-gradient(circle at 30% 30%, ${c1} 1px, transparent 1px),
-              radial-gradient(circle at 70% 70%, ${c1} 1px, transparent 1px)`,
-      confetti: `repeating-linear-gradient(45deg, ${c1} 0px, ${c1} 3px, transparent 3px, transparent 8px),
-                 repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 3px, transparent 3px, transparent 8px)`,
     };
     return patterns[p] || patterns.diagonal;
   }
