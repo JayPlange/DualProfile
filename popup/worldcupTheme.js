@@ -127,10 +127,10 @@
       pattern: 'cross',
     },
     {
-      day: 17, date: '2026-07-14', country: 'South Africa', flag: '🇿🇦',
-      primary: '#007A4D', secondary: '#FFB81C', accent: '#002395',
+      day: 17, date: '2026-07-14', country: 'Senegal', flag: '🇸🇳',
+      primary: '#00853F', secondary: '#FDEF42', accent: '#E31B23',
       textColor: '#FFFFFF',
-      slogan: 'Many faces, one spirit.',
+      slogan: 'Rise and shine.',
       pattern: 'diagonal',
     },
     {
