@@ -14,14 +14,14 @@
 
   const TEAMS = [
     {
-      day: 1, date: '2026-06-28', country: 'Ghana', flag: '🇬🇭',
+      day: 1, date: '2026-06-29', country: 'Ghana', flag: '🇬🇭',
       primary: '#006B3F', secondary: '#FCD116', accent: '#CE1126',
       textColor: '#FFFFFF',
       slogan: 'Stand proudly.',
       pattern: 'kente',       // Akan kente weave — Ghana's iconic textile heritage
     },
     {
-      day: 2, date: '2026-06-29', country: 'Brazil', flag: '🇧🇷',
+      day: 2, date: '2026-06-28', country: 'Brazil', flag: '🇧🇷',
       primary: '#009C3B', secondary: '#FFDF00', accent: '#002776',
       textColor: '#FFFFFF',
       slogan: 'Play beautifully.',
