@@ -56,11 +56,11 @@
       pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
     },
     {
-      day: 7, date: '2026-07-08', country: 'Germany', flag: '🇩🇪',
-      primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
+      day: 7, date: '2026-07-04', country: 'USA', flag: '🇺🇸',
+      primary: '#002868', secondary: '#BF0A30', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Precision matters.',
-      pattern: 'bauhaus',     // Bauhaus — German modernist geometry
+      slogan: 'Make your mark.',
+      pattern: 'stars',       // Stars and Stripes — American iconography — Jul 4 Independence Day 🎆
     },
     {
       day: 8, date: '2026-07-05', country: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
@@ -84,11 +84,11 @@
       pattern: 'seigaiha',    // Seigaiha wave — traditional Japanese pattern
     },
     {
-      day: 11, date: '2026-07-04', country: 'USA', flag: '🇺🇸',
-      primary: '#002868', secondary: '#BF0A30', accent: '#FFFFFF',
+      day: 11, date: '2026-07-08', country: 'Germany', flag: '🇩🇪',
+      primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
       textColor: '#FFFFFF',
-      slogan: 'Make your mark.',
-      pattern: 'stars',       // Stars and Stripes — American iconography
+      slogan: 'Precision matters.',
+      pattern: 'bauhaus',     // Bauhaus — German modernist geometry
     },
     {
       day: 12, date: '2026-07-09', country: 'Mexico', flag: '🇲🇽',
