@@ -56,7 +56,7 @@
       pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
     },
     {
-      day: 7, date: '2026-07-04', country: 'Germany', flag: '🇩🇪',
+      day: 7, date: '2026-07-08', country: 'Germany', flag: '🇩🇪',
       primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
       textColor: '#FFFFFF',
       slogan: 'Precision matters.',
@@ -84,7 +84,7 @@
       pattern: 'seigaiha',    // Seigaiha wave — traditional Japanese pattern
     },
     {
-      day: 11, date: '2026-07-08', country: 'USA', flag: '🇺🇸',
+      day: 11, date: '2026-07-04', country: 'USA', flag: '🇺🇸',
       primary: '#002868', secondary: '#BF0A30', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Make your mark.',
