@@ -70,25 +70,25 @@
       pattern: 'cross',       // St George's Cross — English heritage
     },
     {
-      day: 9, date: '2026-07-06', country: 'Netherlands', flag: '🇳🇱',
-      primary: '#E77729', secondary: '#FFFFFF', accent: '#1C1C1C',
+      day: 9, date: '2026-07-06', country: 'Morocco', flag: '🇲🇦',
+      primary: '#C1272D', secondary: '#006233', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Be bold.',
-      pattern: 'tulip',       // Dutch tulip — Golden Age floral heritage
+      slogan: 'Defy expectations.',
+      pattern: 'zellige',     // Zellige tilework — Moroccan geometric mosaic
     },
     {
-      day: 10, date: '2026-07-07', country: 'Japan', flag: '🇯🇵',
-      primary: '#BC002D', secondary: '#FFFFFF', accent: '#BC002D',
+      day: 10, date: '2026-07-07', country: 'Paraguay', flag: '🇵🇾',
+      primary: '#D52B1E', secondary: '#FFFFFF', accent: '#0038A8',
       textColor: '#FFFFFF',
-      slogan: 'Thoughtful identities.',
-      pattern: 'seigaiha',    // Seigaiha wave — traditional Japanese pattern
+      slogan: 'Dare to dream.',
+      pattern: 'stripes',     // Paraguayan folk art — bold horizontal heritage
     },
     {
-      day: 11, date: '2026-07-08', country: 'Germany', flag: '🇩🇪',
-      primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
+      day: 11, date: '2026-07-08', country: 'Ivory Coast', flag: '🇨🇮',
+      primary: '#F77F00', secondary: '#009A44', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Precision matters.',
-      pattern: 'bauhaus',     // Bauhaus — German modernist geometry
+      slogan: 'Rise through colour.',
+      pattern: 'kente',       // Akan kente weave — West African textile heritage
     },
     {
       day: 12, date: '2026-07-09', country: 'Mexico', flag: '🇲🇽',
@@ -112,11 +112,11 @@
       pattern: 'mochila',     // Wayuu mochila bag — indigenous weave pattern
     },
     {
-      day: 15, date: '2026-07-12', country: 'Morocco', flag: '🇲🇦',
-      primary: '#C1272D', secondary: '#006233', accent: '#FFFFFF',
+      day: 15, date: '2026-07-12', country: 'Sweden', flag: '🇸🇪',
+      primary: '#006AA7', secondary: '#FECC00', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Defy expectations.',
-      pattern: 'zellige',     // Zellige tilework — Moroccan geometric mosaic
+      slogan: 'Stay cool. Stay sharp.',
+      pattern: 'nordic',      // Nordic cross — Scandinavian heritage
     },
     {
       day: 16, date: '2026-07-13', country: 'Switzerland', flag: '🇨🇭',
@@ -126,11 +126,11 @@
       pattern: 'cross',       // Swiss cross — clean, precise
     },
     {
-      day: 17, date: '2026-07-14', country: 'Senegal', flag: '🇸🇳',
-      primary: '#00853F', secondary: '#FDEF42', accent: '#E31B23',
+      day: 17, date: '2026-07-14', country: 'Cape Verde', flag: '🇨🇻',
+      primary: '#003893', secondary: '#CF2027', accent: '#F7D116',
       textColor: '#FFFFFF',
-      slogan: 'Rise and shine.',
-      pattern: 'boubou',      // Boubou textile — West African flowing pattern
+      slogan: 'Small island. Big heart.',
+      pattern: 'waves',       // Atlantic waves — Cape Verde island heritage
     },
     {
       day: 18, date: '2026-07-15', country: 'Norway', flag: '🇳🇴',
@@ -140,11 +140,11 @@
       pattern: 'viking',      // Viking rune / Norse geometric heritage
     },
     {
-      day: 19, date: '2026-07-16', country: 'Australia', flag: '🇦🇺',
-      primary: '#00843D', secondary: '#FFD700', accent: '#FFFFFF',
+      day: 19, date: '2026-07-16', country: 'Egypt', flag: '🇪🇬',
+      primary: '#C8102E', secondary: '#C09A00', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Go your own way.',
-      pattern: 'aboriginal',  // Aboriginal dot art — indigenous heritage
+      slogan: 'Timeless presence.',
+      pattern: 'hieroglyph',  // Ancient Egyptian geometric — pyramid/papyrus
     },
     {
       day: 20, date: '2026-07-17', country: 'Canada', flag: '🇨🇦',
@@ -154,11 +154,11 @@
       pattern: 'maple',       // Maple leaf — Canadian national symbol
     },
     {
-      day: 21, date: '2026-07-18', country: 'Egypt', flag: '🇪🇬',
-      primary: '#C8102E', secondary: '#C09A00', accent: '#FFFFFF',
+      day: 21, date: '2026-07-18', country: 'Algeria', flag: '🇩🇿',
+      primary: '#006233', secondary: '#FFFFFF', accent: '#D21034',
       textColor: '#FFFFFF',
-      slogan: 'Timeless presence.',
-      pattern: 'hieroglyph',  // Ancient Egyptian geometric — pyramid/papyrus
+      slogan: 'The desert blooms.',
+      pattern: 'arabesque',   // Arabesque geometric — North African Islamic art
     },
     {
       day: 22, date: '2026-07-19', country: 'Final Day', flag: '🏆',
@@ -321,6 +321,29 @@
         repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 4px, transparent 4px, transparent 10px),
         repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 4px, transparent 4px, transparent 10px),
         repeating-linear-gradient(0deg,   ${c3} 0px, ${c3} 2px, transparent 2px, transparent 10px)`,
+
+      // Paraguay — bold horizontal folk art stripes
+      stripes: `
+        repeating-linear-gradient(0deg, ${c1} 0px, ${c1} 4px, transparent 4px, transparent 16px),
+        repeating-linear-gradient(90deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 32px)`,
+
+      // Sweden / Nordic — Scandinavian cross pattern
+      nordic: `
+        repeating-linear-gradient(0deg,  ${c1} 0px, ${c1} 3px, transparent 3px, transparent 20px),
+        repeating-linear-gradient(90deg, ${c1} 0px, ${c1} 3px, transparent 3px, transparent 20px),
+        repeating-linear-gradient(45deg, ${c2} 0px, ${c2} 1px, transparent 1px, transparent 20px)`,
+
+      // Algeria — Arabesque Islamic geometric art
+      arabesque: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 2px, transparent 2px, transparent 10px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 10px),
+        repeating-linear-gradient(0deg,   ${c1} 0px, ${c1} 1px, transparent 1px, transparent 10px),
+        repeating-linear-gradient(90deg,  ${c2} 0px, ${c2} 1px, transparent 1px, transparent 10px)`,
+
+      // Cape Verde — Atlantic ocean waves
+      waves: `
+        repeating-radial-gradient(ellipse 60px 15px at 0% 100%, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 30px),
+        repeating-radial-gradient(ellipse 60px 15px at 50% 50%, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 30px)`,
 
       // Fallback
       diagonal: `repeating-linear-gradient(135deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 14px)`,
