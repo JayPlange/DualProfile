@@ -49,18 +49,19 @@
       pattern: 'mosaic',      // Moorish mosaic tile — Alhambra heritage
     },
     {
-      day: 6, date: '2026-07-03', country: 'Portugal', flag: '🇵🇹',
-      primary: '#006600', secondary: '#FF0000', accent: '#FFFFFF',
+      day: 6, date: '2026-07-03', country: 'Belgium', flag: '🇧🇪',
+      primary: '#1C1C1C', secondary: '#FAE042', accent: '#EF3340',
       textColor: '#FFFFFF',
-      slogan: 'Show your best self.',
-      pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
+      slogan: 'Quality over quantity.',
+      pattern: 'lace',        // Belgian lace — Bruges lace-making heritage
     },
     {
       day: 7, date: '2026-07-04', country: 'USA', flag: '🇺🇸',
       primary: '#002868', secondary: '#BF0A30', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Make your mark.',
-      pattern: 'stars',       // Stars and Stripes — American iconography — Jul 4 Independence Day 🎆
+      pattern: 'stars',       // Stars and Stripes — Jul 4 Independence Day 🎆 (eliminated but day kept)
+      specialDay: 'independence',
     },
     {
       day: 8, date: '2026-07-05', country: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
@@ -77,11 +78,11 @@
       pattern: 'zellige',     // Zellige tilework — Moroccan geometric mosaic
     },
     {
-      day: 10, date: '2026-07-07', country: 'Paraguay', flag: '🇵🇾',
-      primary: '#D52B1E', secondary: '#FFFFFF', accent: '#0038A8',
+      day: 10, date: '2026-07-07', country: 'Germany', flag: '🇩🇪',
+      primary: '#1C1C1C', secondary: '#DD0000', accent: '#FFCC00',
       textColor: '#FFFFFF',
-      slogan: 'Dare to dream.',
-      pattern: 'stripes',     // Paraguayan folk art — bold horizontal heritage
+      slogan: 'Precision matters.',
+      pattern: 'bauhaus',     // Bauhaus — German modernist geometry
     },
     {
       day: 11, date: '2026-07-08', country: 'Ivory Coast', flag: '🇨🇮',
@@ -91,18 +92,18 @@
       pattern: 'kente',       // Akan kente weave — West African textile heritage
     },
     {
-      day: 12, date: '2026-07-09', country: 'Mexico', flag: '🇲🇽',
+      day: 12, date: '2026-07-09', country: 'Netherlands', flag: '🇳🇱',
+      primary: '#E77729', secondary: '#FFFFFF', accent: '#1C1C1C',
+      textColor: '#FFFFFF',
+      slogan: 'Be bold.',
+      pattern: 'tulip',       // Dutch tulip — Golden Age floral heritage
+    },
+    {
+      day: 13, date: '2026-07-10', country: 'Mexico', flag: '🇲🇽',
       primary: '#006847', secondary: '#CE1126', accent: '#FFFFFF',
       textColor: '#FFFFFF',
       slogan: 'Show your colors.',
       pattern: 'aztec',       // Aztec geometric — pre-Columbian heritage
-    },
-    {
-      day: 13, date: '2026-07-10', country: 'Belgium', flag: '🇧🇪',
-      primary: '#1C1C1C', secondary: '#FAE042', accent: '#EF3340',
-      textColor: '#FFFFFF',
-      slogan: 'Quality over quantity.',
-      pattern: 'lace',        // Belgian lace — Bruges lace-making heritage
     },
     {
       day: 14, date: '2026-07-11', country: 'Colombia', flag: '🇨🇴',
@@ -140,18 +141,18 @@
       pattern: 'viking',      // Viking rune / Norse geometric heritage
     },
     {
-      day: 19, date: '2026-07-16', country: 'Egypt', flag: '🇪🇬',
-      primary: '#C8102E', secondary: '#C09A00', accent: '#FFFFFF',
+      day: 19, date: '2026-07-16', country: 'Japan', flag: '🇯🇵',
+      primary: '#BC002D', secondary: '#FFFFFF', accent: '#BC002D',
       textColor: '#FFFFFF',
-      slogan: 'Timeless presence.',
-      pattern: 'hieroglyph',  // Ancient Egyptian geometric — pyramid/papyrus
+      slogan: 'Thoughtful identities.',
+      pattern: 'seigaiha',    // Seigaiha wave — traditional Japanese pattern
     },
     {
-      day: 20, date: '2026-07-17', country: 'Canada', flag: '🇨🇦',
-      primary: '#CC0000', secondary: '#FFFFFF', accent: '#CC0000',
+      day: 20, date: '2026-07-17', country: 'Portugal', flag: '🇵🇹',
+      primary: '#006600', secondary: '#FF0000', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'Show up everywhere.',
-      pattern: 'maple',       // Maple leaf — Canadian national symbol
+      slogan: 'Show your best self.',
+      pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
     },
     {
       day: 21, date: '2026-07-18', country: 'Algeria', flag: '🇩🇿',
