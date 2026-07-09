@@ -92,6 +92,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   let photos = { photo1: null, photo2: null };
   let isPro = false;
+  let isBulk = false;   // true for Annual and Lifetime tiers
+  let bulkMode = false; // true when bulk selection UI is active
+  let bulkSelected = new Set(); // set of contact names selected in bulk mode
   let currentTheme = 'dark';
   let previewActive = false;
 
@@ -301,6 +304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Initialize Pro features (gated by isPro)
       initProFeatures(isPro).catch(e => console.warn('[DualProfile] Pro features init error:', e));
+      initBulkAssign(isBulk);
 
       // Initialize sync status
       await initializeSync();
@@ -757,7 +761,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // During an active trial, treat as Pro for UI purposes
       const effective = tierData.effectiveTier || (currentTier === 'pro' || currentTier === 'lifetime' ? 'pro' : 'free');
-      isPro = (effective === 'pro' || effective === 'trial');
+      isPro = (effective === 'pro' || effective === 'trial' || effective === 'annual');
+      isBulk = (effective === 'annual' || currentTier === 'annual' || currentTier === 'lifetime');
 
       updateDevModeUI(tierData);
       updateLimitInfo();
@@ -849,45 +854,8 @@ document.addEventListener('DOMContentLoaded', async () => {
    * Updates trialState, drives trialBar, starts countdown if active.
    */
   async function initializeTrial() {
-    try {
-      const result = await DualProfileStorage.getTrialStatus();
-      if (!result || !result.success) return;
-
-      trialState = {
-        effectiveTier: result.effectiveTier || 'free',
-        trialStatus:   result.trialStatus   || 'not_started',
-        trialEndsAt:   result.trialEndsAt   || null,
-        msRemaining:   result.msRemaining   || null,
-      };
-
-      // If client sees trial expired but server hasn't been told yet, call expireTrial
-      if (trialState.trialStatus === 'active' &&
-          trialState.msRemaining !== null &&
-          trialState.msRemaining <= 0) {
-        await DualProfileStorage.expireTrial();
-        trialState.trialStatus  = 'expired';
-        trialState.effectiveTier = 'free';
-      }
-
-      updateTrialBar();
-
-      // isPro-equivalent during active trial — give full UI access
-      if (trialState.effectiveTier === 'trial') {
-        isPro = true;
-        updateProUI();
-      }
-
-      // Start live countdown if trial is active
-      if (trialState.trialStatus === 'active') {
-        startTrialCountdown();
-      }
-
-      // Update contacts tab locked state
-      updateLockedContacts();
-
-    } catch (err) {
-      console.error('[DualProfile] initializeTrial error:', err);
-    }
+    // Trial system removed — pricing now: Free (1 contact) | Pro | Annual (bulk) | Lifetime
+    // This stub keeps call sites intact without breaking anything.
   }
 
   /**
@@ -895,58 +863,9 @@ document.addEventListener('DOMContentLoaded', async () => {
    * States: not_started (hidden) | active (countdown) | expired (upgrade CTA)
    */
   function updateTrialBar() {
-    const bar    = $('trialBar');
-    const badge  = $('trialBadge');
-    const desc   = $('trialBarDesc');
-    const cta    = $('trialBarCta');
-    if (!bar) return;
-
-    const { trialStatus, msRemaining } = trialState;
-
-    if (trialStatus === 'not_started') {
-      // Setup mode — show subtle label, no countdown, no pressure
-      bar.classList.remove('hidden', 'trial-bar--active', 'trial-bar--expiring', 'trial-bar--expired');
-      bar.classList.add('trial-bar--setup');
-      badge.textContent = dpT('trial_setup_mode');
-      desc.textContent  = dpT('trial_setup_desc');
-      cta.classList.add('hidden');
-      return;
-    }
-
-    if (trialStatus === 'active') {
-      const days  = Math.ceil((msRemaining || 0) / (1000 * 60 * 60 * 24));
-      const hours = Math.ceil((msRemaining || 0) / (1000 * 60 * 60));
-      const isExpiring = days <= 1;
-
-      bar.classList.remove('hidden', 'trial-bar--setup', 'trial-bar--expired');
-      bar.classList.toggle('trial-bar--active', !isExpiring);
-      bar.classList.toggle('trial-bar--expiring', isExpiring);
-
-      if (days <= 0) {
-        badge.textContent = dpT('trial_expires_today');
-      } else if (days === 1) {
-        badge.textContent = dpT('trial_active_badge_1');
-      } else if (hours < 24) {
-        badge.textContent = dpTrialT('trial_hours_remaining', { hours });
-      } else {
-        badge.textContent = dpTrialT('trial_active_badge', { days });
-      }
-
-      desc.textContent = isExpiring ? dpT('trial_expiring_desc') : dpT('trial_full_access');
-      cta.classList.add('hidden');
-      return;
-    }
-
-    if (trialStatus === 'expired') {
-      const allContacts = Object.keys(window._currentContactMap || {}).length;
-      bar.classList.remove('hidden', 'trial-bar--setup', 'trial-bar--active', 'trial-bar--expiring');
-      bar.classList.add('trial-bar--expired');
-      badge.textContent = dpT('trial_expired_badge');
-      desc.textContent  = dpT('trial_expired_desc');
-      cta.classList.remove('hidden');
-      cta.textContent = dpT('upgrade_working_cta');
-      cta.onclick = () => showUpgradeModal('expired');
-    }
+    // Trial removed — hide the trial bar entirely
+    const bar = $('trialBar');
+    if (bar) bar.classList.add('hidden');
   }
 
   /**
@@ -954,24 +873,7 @@ document.addEventListener('DOMContentLoaded', async () => {
    * Calls expireTrial when it crosses zero.
    */
   function startTrialCountdown() {
-    if (_trialCountdownInterval) clearInterval(_trialCountdownInterval);
-    _trialCountdownInterval = setInterval(async () => {
-      if (!trialState.trialEndsAt) return;
-      trialState.msRemaining = trialState.trialEndsAt - Date.now();
-      if (trialState.msRemaining <= 0) {
-        clearInterval(_trialCountdownInterval);
-        _trialCountdownInterval = null;
-        await DualProfileStorage.expireTrial();
-        trialState.trialStatus   = 'expired';
-        trialState.effectiveTier = 'free';
-        isPro = false;
-        updateTrialBar();
-        updateProUI();
-        updateLockedContacts();
-      } else {
-        updateTrialBar();
-      }
-    }, 60 * 1000); // check every minute
+    // Trial removed — no-op
   }
 
   /**
@@ -1870,6 +1772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const avatarHtml = createAvatarHtml(contact, 'wa-contact-avatar');
 
       item.innerHTML = `
+        <div class="bulk-checkbox"></div>
         ${avatarHtml}
         <div class="wa-contact-info">
           <div class="wa-contact-name">${escapeHtml(contact.name)}</div>
@@ -1897,6 +1800,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           showInvitePopup(inviteBtn.dataset.name, inviteBtn.dataset.phone);
         });
       }
+
+      // Bulk selection click on item (only active in bulk mode)
+      item.addEventListener('click', (e) => {
+        if (!bulkMode) return;
+        if (e.target.closest('.btn-assign') || e.target.closest('.btn-invite-inline')) return;
+        const name = contact.name;
+        if (bulkSelected.has(name)) {
+          bulkSelected.delete(name);
+          item.classList.remove('bulk-selected');
+        } else {
+          bulkSelected.add(name);
+          item.classList.add('bulk-selected');
+        }
+        updateBulkCount();
+      });
 
       fragment.appendChild(item);
     });
@@ -3292,6 +3210,123 @@ function applyProCardLock(sectionId, formId, isPro) {
   wrapper.onclick = !isPro ? () => showUpgradeModal('standard') : null;
   wrapper.style.cursor = !isPro ? 'not-allowed' : 'default';
 }
+
+// ── Bulk Assignment (Annual & Lifetime) ───────────────────────────────────────
+  function updateBulkCount() {
+    const countEl = document.getElementById('bulkSelectedCount');
+    if (countEl) countEl.textContent = bulkSelected.size;
+  }
+
+  function initBulkAssign(hasBulk) {
+    const toggleWrap = document.getElementById('bulkModeToggleWrap');
+    const toggleBtn  = document.getElementById('bulkModeToggle');
+    const bar        = document.getElementById('bulkAssignBar');
+    const selectAll  = document.getElementById('bulkSelectAll');
+    const assignP1   = document.getElementById('bulkAssignP1');
+    const assignP2   = document.getElementById('bulkAssignP2');
+    const clearBtn   = document.getElementById('bulkClear');
+
+    if (!toggleWrap || !toggleBtn) return;
+
+    if (!hasBulk) {
+      // Non-bulk tiers — show upgrade teaser instead
+      toggleWrap.classList.remove('hidden');
+      toggleBtn.textContent = '⚡ Bulk select — Annual';
+      toggleBtn.style.opacity = '0.5';
+      toggleBtn.onclick = () => showUpgradeModal('standard');
+      return;
+    }
+
+    // Annual / Lifetime — show full bulk UI
+    toggleWrap.classList.remove('hidden');
+
+    toggleBtn.onclick = () => {
+      bulkMode = !bulkMode;
+      bulkSelected.clear();
+      document.querySelectorAll('.wa-contact-item').forEach(el => el.classList.remove('bulk-selected'));
+      updateBulkCount();
+
+      if (bulkMode) {
+        toggleBtn.textContent = '✕ Exit bulk';
+        toggleBtn.classList.add('active');
+        bar.classList.remove('hidden');
+        elements.waContactsList.classList.add('bulk-mode');
+      } else {
+        toggleBtn.textContent = '☰ Bulk select';
+        toggleBtn.classList.remove('active');
+        bar.classList.add('hidden');
+        elements.waContactsList.classList.remove('bulk-mode');
+      }
+    };
+
+    // Select all visible contacts
+    if (selectAll) {
+      selectAll.onclick = () => {
+        const items = elements.waContactsList.querySelectorAll('.wa-contact-item');
+        const allSelected = items.length === bulkSelected.size;
+        if (allSelected) {
+          // Deselect all
+          bulkSelected.clear();
+          items.forEach(el => el.classList.remove('bulk-selected'));
+        } else {
+          // Select all
+          items.forEach(el => {
+            const name = el.dataset.name;
+            if (name) {
+              bulkSelected.add(name);
+              el.classList.add('bulk-selected');
+            }
+          });
+        }
+        updateBulkCount();
+      };
+    }
+
+    // Assign all selected to P1
+    if (assignP1) {
+      assignP1.onclick = async () => {
+        if (bulkSelected.size === 0) return;
+        assignP1.textContent = '⏳ P1';
+        assignP1.disabled = true;
+        for (const name of bulkSelected) {
+          await handleAssignContact(name, '1', null);
+        }
+        bulkSelected.clear();
+        document.querySelectorAll('.wa-contact-item').forEach(el => el.classList.remove('bulk-selected'));
+        updateBulkCount();
+        assignP1.textContent = '→ P1';
+        assignP1.disabled = false;
+        showToast(dpT('bulk_assigned_p1') || `Assigned to Photo 1`);
+      };
+    }
+
+    // Assign all selected to P2
+    if (assignP2) {
+      assignP2.onclick = async () => {
+        if (bulkSelected.size === 0) return;
+        assignP2.textContent = '⏳ P2';
+        assignP2.disabled = true;
+        for (const name of bulkSelected) {
+          await handleAssignContact(name, '2', null);
+        }
+        bulkSelected.clear();
+        document.querySelectorAll('.wa-contact-item').forEach(el => el.classList.remove('bulk-selected'));
+        updateBulkCount();
+        assignP2.textContent = '→ P2';
+        assignP2.disabled = false;
+        showToast(dpT('bulk_assigned_p2') || `Assigned to Photo 2`);
+      };
+    }
+
+    // Clear selection
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        bulkSelected.clear();
+        document.querySelectorAll('.wa-contact-item').forEach(el => el.classList.remove('bulk-selected'));
+        updateBulkCount();
+      };
+    }
+  }
 
 // ── Init all Pro features ─────────────────────────────────────────────────────
 async function initProFeatures(isPro) {
