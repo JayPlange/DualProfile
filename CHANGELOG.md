@@ -1,3 +1,31 @@
+## v1.0.25 — 2026-07-16
+- **Root cause of the Chrome->Edge rendering bug found and fixed.** The
+  sync layer was never broken (confirmed via the v1.0.24 diagnostics —
+  Convex had the correct photo waiting, every time). The real bug: this
+  WhatsApp Web session renders the header avatar as an SVG `<image>`
+  element instead of an HTML `<img>` tag (`DualProfileDebug.diagnose()`
+  showed `header exists: false` and `extractPhoneFromActiveChat() -> null`
+  even though the header container plainly existed in the DOM — every
+  detection function in the file required a literal `<img>` tag to
+  recognize a header/avatar, and SVG's `<image>` is a different tag
+  entirely, so all of them silently found nothing).
+- Every `querySelector('img')` / `querySelectorAll('img')` in
+  content.js (32 call sites: header detection, sidebar rows, preview
+  mode, forward-modal overlays, drawer avatars) now also matches SVG
+  `<image>` elements.
+- Added `setImageSource()` / `getImageSrc()` as the canonical way to
+  read/write an avatar's photo — SVGImageElement has no `.src` property
+  at all (unlike HTMLImageElement), so a plain `img.src = url` silently
+  no-ops on it; the SVG case is now routed through the `href` /
+  `xlink:href` attributes instead. ~15 call sites that read/wrote `.src`
+  directly were migrated to these helpers.
+- This was very likely triggered by a WhatsApp Web front-end rollout
+  affecting some sessions before others (a client-side A/B/gradual
+  rollout), which is why Chrome and Edge behaved differently on the same
+  machine even though it's the same extension code on both — nothing to
+  do with Business vs personal accounts specifically. Any session on
+  either browser could hit this once WhatsApp's rollout reaches it.
+
 ## v1.0.24 — 2026-07-16
 - Added two read-only diagnostic message handlers to debug the
   cross-browser sync issue directly, since v1.0.23's fix alone didn't

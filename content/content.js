@@ -210,7 +210,7 @@
       if (!photoUrl || photoUrl.slice(0, 5) !== 'data:') return false; // must be base64
 
       // Already showing our photo — skip
-      if (img.src === photoUrl) return true;
+      if (getImageSrc(img) === photoUrl) return true;
 
       // Overlay architecture — hide img, place our div above it.
       // React can reset img.src forever; it cannot touch our div.
@@ -321,7 +321,7 @@
       CONFIG.DEBUG_MODE = true;
       const phone = extractPhoneFromActiveChat();
       CONFIG.DEBUG_MODE = wasDebug;
-      const overlay = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img')).find(i=>i.dataset&&i.dataset.dpApplied));
+      const overlay = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img, image')).find(i=>i.dataset&&i.dataset.dpApplied));
       const contactMap = state.rules?.contactMap || {};
       console.group('[DualProfile] Diagnosis');
       console.log('enabled:', state.enabled);
@@ -354,7 +354,7 @@
     }),
 
     status: () => {
-      const overlayActive = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img')).find(i=>i.dataset&&i.dataset.dpApplied));
+      const overlayActive = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img, image')).find(i=>i.dataset&&i.dataset.dpApplied));
       const contactMap = state.rules?.contactMap || {};
       return { enabled: state.enabled, overlayActive, currentContact: state.currentContact, currentOverlayPhone, currentOverlayUrl, currentOverlaySource, overlayGeneration, lastChatPhone: p2pState.lastChatPhone, previewActive: previewState.active, p2pEnabled: p2pState.enabled, contactMap };
     },
@@ -371,7 +371,7 @@
       currentOverlaySource = null;
       scheduleHeaderUpdate();
       applySidebarOverlays();
-      const ok = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img')).find(i=>i.dataset&&i.dataset.dpApplied));
+      const ok = !!(getHeader&&getHeader()&&Array.from(getHeader().querySelectorAll('img, image')).find(i=>i.dataset&&i.dataset.dpApplied));
       console.log('[DualProfile] forceApply() ->', ok ? 'overlay present' : 'no overlay (P2P photo needed)');
     },
 
@@ -396,12 +396,12 @@
     inspectOverlay: () => {
       // v9.7: header uses src-swap, not div overlay
   const overlayHdr = getHeader ? getHeader() : null;
-  const overlay = overlayHdr ? Array.from(overlayHdr.querySelectorAll('img')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
-      const headerImgs = document.querySelectorAll('#main header img');
+  const overlay = overlayHdr ? Array.from(overlayHdr.querySelectorAll('img, image')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
+      const headerImgs = document.querySelectorAll('#main header img, #main header image');
       console.group('[DualProfile] Overlay inspection');
       console.log('overlay element:', overlay);
       console.log('overlay URL:', overlay?.dataset?.dualprofileUrl?.slice(0,80));
-      headerImgs.forEach((img, i) => console.log('img['+i+']:', img.width+'x'+img.height, img.src.slice(0,60)));
+      headerImgs.forEach((img, i) => console.log('img['+i+']:', (img.offsetWidth||0)+'x'+(img.offsetHeight||0), (getImageSrc(img)||'').slice(0,60)));
       console.groupEnd();
       return overlay;
     }
@@ -992,9 +992,10 @@ async function addNetworkBadges() {
 
     // Avatar — img first, then background-image fallback
     let avatarUrl;
-    const avatarImg = row.querySelector('img');
-    if (avatarImg?.src && !avatarImg.src.startsWith('data:image/svg')) {
-      avatarUrl = avatarImg.src;
+    const avatarImg = row.querySelector('img, image');
+    const _avatarSrc = getImageSrc(avatarImg);
+    if (_avatarSrc && !_avatarSrc.startsWith('data:image/svg')) {
+      avatarUrl = _avatarSrc;
     } else {
       const divWithBg = row.querySelector('div[style*="background-image"]');
       if (divWithBg) {
@@ -1400,13 +1401,13 @@ async function init() {
                     var updated = false;
                     document.querySelectorAll('[data-dualprofile-sidebar-overlay="true"]').forEach(function(el) {
                       if (el.getAttribute('data-dualprofile-phone') === phone) {
-                        var img = el.querySelector('img');
+                        var img = el.querySelector('img, image');
                         if (img) { setImageSource(img, cachedDataUrl); updated = true; }
                       }
                     });
                     if (!updated) applySidebarOverlays();
                     if (currentOverlayPhone === phone && currentOverlaySource === 'p2p') {
-                      var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
+                      var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img, image')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
                       if (hdrImg) setImageSource(hdrImg, cachedDataUrl);
                       else scheduleHeaderUpdate();
                     } else {
@@ -1431,13 +1432,13 @@ async function init() {
                       var updated = false;
                       document.querySelectorAll('[data-dualprofile-sidebar-overlay="true"]').forEach(function(el) {
                         if (el.getAttribute('data-dualprofile-phone') === phone) {
-                          var img = el.querySelector('img');
+                          var img = el.querySelector('img, image');
                           if (img) { setImageSource(img, dataUrl); updated = true; }
                         }
                       });
                       if (!updated) applySidebarOverlays();
                       if (currentOverlayPhone === phone && currentOverlaySource === 'p2p') {
-                        var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
+                        var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img, image')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
                         if (hdrImg) setImageSource(hdrImg, dataUrl);
                         else scheduleHeaderUpdate();
                       } else {
@@ -1801,13 +1802,13 @@ function handleMessage(message, sender, sendResponse) {
                 // Update existing overlays in-place — no remove+recreate = no flicker
                 document.querySelectorAll('[data-dualprofile-sidebar-overlay="true"]').forEach(function(el) {
                   if (el.getAttribute('data-dualprofile-phone') === message.phone) {
-                    var img = el.querySelector('img');
+                    var img = el.querySelector('img, image');
                     if (img) setImageSource(img, newUrl);
                   }
                 });
                 if (currentOverlayPhone === message.phone && currentOverlaySource === 'p2p') {
-                  var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
-                  if (hdrImg) hdrImg.src = newUrl;
+                  var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img, image')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
+                  if (hdrImg) setImageSource(hdrImg, newUrl);
                   else scheduleHeaderUpdate();
                 } else {
                   scheduleHeaderUpdate();
@@ -1981,7 +1982,7 @@ function handleMessage(message, sender, sendResponse) {
         });
         return true;
       case 'DEBUG_IMAGES':
-        const visibleImages = document.querySelectorAll('img').length;
+        const visibleImages = document.querySelectorAll('img, image').length;
         const profilePhotos = document.querySelectorAll('img[src*="whatsapp.net"], img[src*="cdn.whatsapp.net"]').length;
         sendResponse({
           success: true,
@@ -2021,12 +2022,12 @@ function _reapplyPreviewToSurfaces(photoUrl) {
 
   // All surfaces that should show the preview photo
   const allSelectors = [
-    '[data-testid="menu-bar-user-avatar"] img',
-    '#side header img',
-    '[data-testid="menu-bar"] img',
-    '#main header [data-testid*="avatar"] img',
-    '#main header [role="button"] img',
-    '#main header img'
+    '[data-testid="menu-bar-user-avatar"] img', '[data-testid="menu-bar-user-avatar"] image',
+    '#side header img', '#side header image',
+    '[data-testid="menu-bar"] img', '[data-testid="menu-bar"] image',
+    '#main header [data-testid*="avatar"] img', '#main header [data-testid*="avatar"] image',
+    '#main header [role="button"] img', '#main header [role="button"] image',
+    '#main header img', '#main header image'
   ];
 
   allSelectors.forEach(sel => {
@@ -2035,9 +2036,9 @@ function _reapplyPreviewToSurfaces(photoUrl) {
       if (img.closest('[data-dualprofile-sidebar-overlay]')) return;
       const rect = img.getBoundingClientRect();
       if (rect.width < 25 || rect.width > 80) return;
-      if (img.src !== photoUrl) {
+      if (getImageSrc(img) !== photoUrl) {
         if (!previewState.originalPhotos.has(img)) {
-          previewState.originalPhotos.set(img, img.src);
+          previewState.originalPhotos.set(img, getImageSrc(img));
         }
         setImageSource(img, photoUrl);
         img.dataset.dualprofilePreview = 'true';
@@ -2090,12 +2091,12 @@ async function applyPreview(photoUrl, label) {
   // ── Surface 1: "You" / "Message yourself" sidebar chat entry ─────────────
   const userChatEntry = findUserChatEntry();
   if (userChatEntry) {
-    const avatarImg = userChatEntry.element.querySelector('img');
-    if (avatarImg?.src) {
+    const avatarImg = userChatEntry.element.querySelector('img, image');
+    if (getImageSrc(avatarImg)) {
       if (!previewState.originalPhotos.has(avatarImg)) {
-        previewState.originalPhotos.set(avatarImg, avatarImg.src);
+        previewState.originalPhotos.set(avatarImg, getImageSrc(avatarImg));
       }
-      avatarImg.src = photoUrl;
+      setImageSource(avatarImg, photoUrl);
       avatarImg.dataset.dualprofilePreview = 'true';
       replacedCount++;
       Logger.debug('[PREVIEW] Applied to You sidebar entry');
@@ -2104,9 +2105,9 @@ async function applyPreview(photoUrl, label) {
 
   // ── Surface 2: Sidebar top-left header avatar ─────────────────────────────
   const sideHeaderSelectors = [
-    '[data-testid="menu-bar-user-avatar"] img',
-    '#side header img',
-    '[data-testid="menu-bar"] img'
+    '[data-testid="menu-bar-user-avatar"] img', '[data-testid="menu-bar-user-avatar"] image',
+    '#side header img', '#side header image',
+    '[data-testid="menu-bar"] img', '[data-testid="menu-bar"] image'
   ];
   for (const sel of sideHeaderSelectors) {
     document.querySelectorAll(sel).forEach(img => {
@@ -2114,7 +2115,7 @@ async function applyPreview(photoUrl, label) {
       const rect = img.getBoundingClientRect();
       if (rect.width < 30 || rect.width > 80) return;
       if (!previewState.originalPhotos.has(img)) {
-        previewState.originalPhotos.set(img, img.src);
+        previewState.originalPhotos.set(img, getImageSrc(img));
       }
       setImageSource(img, photoUrl);
       img.dataset.dualprofilePreview = 'true';
@@ -2129,7 +2130,7 @@ async function applyPreview(photoUrl, label) {
   // For other contacts, the header shows the contact's photo — don't replace that.
   const mainHeader = getHeader();
   if (mainHeader) {
-    const mainHeaderImgs = mainHeader.querySelectorAll('img');
+    const mainHeaderImgs = mainHeader.querySelectorAll('img, image');
     mainHeaderImgs.forEach(img => {
       if (img.closest('[data-dualprofile-overlay]')) return;
       if (img.dataset.dualprofilePreview) return;
@@ -2140,7 +2141,7 @@ async function applyPreview(photoUrl, label) {
       const titleText = headerTitle?.textContent?.toLowerCase() || '';
       if (titleText.includes('you') || titleText.includes('message yourself') || titleText === '') {
         if (!previewState.originalPhotos.has(img)) {
-          previewState.originalPhotos.set(img, img.src);
+          previewState.originalPhotos.set(img, getImageSrc(img));
         }
         setImageSource(img, photoUrl);
         img.dataset.dualprofilePreview = 'true';
@@ -2156,9 +2157,9 @@ async function applyPreview(photoUrl, label) {
     if (profileOpened) {
       await delay(500);
       const drawerSelectors = [
-        '[data-testid="drawer-left"] img',
-        '[data-testid="profile-drawer"] img',
-        'span[data-testid="profile-picture-avatar"] img'
+        '[data-testid="drawer-left"] img', '[data-testid="drawer-left"] image',
+        '[data-testid="profile-drawer"] img', '[data-testid="profile-drawer"] image',
+        'span[data-testid="profile-picture-avatar"] img', 'span[data-testid="profile-picture-avatar"] image'
       ];
       for (const sel of drawerSelectors) {
         document.querySelectorAll(sel).forEach(img => {
@@ -2166,7 +2167,7 @@ async function applyPreview(photoUrl, label) {
           const rect = img.getBoundingClientRect();
           if (rect.width < 50 || !rect.width) return;
           if (!previewState.originalPhotos.has(img)) {
-            previewState.originalPhotos.set(img, img.src);
+            previewState.originalPhotos.set(img, getImageSrc(img));
           }
           setImageSource(img, photoUrl);
           img.dataset.dualprofilePreview = 'true';
@@ -2232,22 +2233,22 @@ function autoPreviewOnLoad() {
     // Sidebar "You" entry
     const userChatEntry = findUserChatEntry();
     if (userChatEntry) {
-      const avatarImg = userChatEntry.element.querySelector('img');
-      if (avatarImg?.src) {
-        previewState.originalPhotos.set(avatarImg, avatarImg.src);
-        avatarImg.src = photoData;
+      const avatarImg = userChatEntry.element.querySelector('img, image');
+      if (getImageSrc(avatarImg)) {
+        previewState.originalPhotos.set(avatarImg, getImageSrc(avatarImg));
+        setImageSource(avatarImg, photoData);
         avatarImg.dataset.dualprofilePreview = 'true';
         Logger.info('[PREVIEW-AUTO] Applied to You entry');
       }
     }
 
     // Side header avatar
-    ['[data-testid="menu-bar-user-avatar"] img', '#side header img'].forEach(sel => {
+    ['[data-testid="menu-bar-user-avatar"] img, [data-testid="menu-bar-user-avatar"] image', '#side header img, #side header image'].forEach(sel => {
       document.querySelectorAll(sel).forEach(img => {
         if (img.dataset.dualprofilePreview) return;
         const rect = img.getBoundingClientRect();
         if (rect.width < 30 || rect.width > 80) return;
-        previewState.originalPhotos.set(img, img.src);
+        previewState.originalPhotos.set(img, getImageSrc(img));
         setImageSource(img, photoData);
         img.dataset.dualprofilePreview = 'true';
       });
@@ -2430,9 +2431,9 @@ function hidePreviewBanner() {
 * @returns {string|null} - Valid avatar URL or null
 */
 function extractContactAvatar(item) {
-  const imgElement = item.querySelector('img');
-  if (!imgElement?.src) return null;
-  const src = imgElement.src;
+  const imgElement = item.querySelector('img, image');
+  const src = getImageSrc(imgElement);
+  if (!src) return null;
 
   if (!src || src.includes('emoji') || src.includes('icon') ||
     src.includes('sticker') || src.includes('default-user') ||
@@ -4192,14 +4193,14 @@ async function queryRemotePhoto(ownerPhone) {
       var sidebarUpdated = false;
       existingOverlays.forEach(function(el) {
         if (el.getAttribute('data-dualprofile-phone') === ownerPhone) {
-          var img = el.querySelector('img');
+          var img = el.querySelector('img, image');
           if (img) { setImageSource(img, finalUrl); sidebarUpdated = true; }
         }
       });
       if (!sidebarUpdated) applySidebarOverlays();
       // Header: update in place if already showing this phone, else full apply
       if (currentOverlayPhone === ownerPhone && currentOverlaySource === 'p2p') {
-        var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
+        var _hdr = getHeader ? getHeader() : null; var hdrImg = _hdr ? Array.from(_hdr.querySelectorAll('img, image')).find(function(i){return i.dataset&&i.dataset.dpApplied;}) : null;
         if (hdrImg) setImageSource(hdrImg, finalUrl);
         else scheduleHeaderUpdate();
       } else {
@@ -4361,8 +4362,31 @@ function setImageSource(img, url) {
   } else {
     finalSrc = safeUrl + '?t=' + Date.now();
   }
+  // WhatsApp now sometimes renders the avatar as an SVG <image> element
+  // instead of an HTML <img> — SVGImageElement has no .src property at all,
+  // so a plain img.src assignment silently does nothing on it. SVG images
+  // are addressed via the href attribute instead (xlink:href for older
+  // renderer compatibility — both are set defensively).
+  var isSvgImage = img.tagName && img.tagName.toLowerCase() === 'image';
+  if (isSvgImage) {
+    var currentHref = img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    if (currentHref === finalSrc) return; // prevent redundant write
+    img.setAttribute('href', finalSrc);
+    try { img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', finalSrc); } catch (_) {}
+    return;
+  }
   if (img.src === finalSrc) return; // prevent redundant write
   img.src = finalSrc;
+}
+
+// Reader counterpart to setImageSource — same SVG <image> vs HTML <img>
+// distinction. SVGImageElement.src is undefined; use href instead.
+function getImageSrc(img) {
+  if (!img) return null;
+  if (img.tagName && img.tagName.toLowerCase() === 'image') {
+    return img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || null;
+  }
+  return img.src || null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -4467,7 +4491,7 @@ function findHeaderAvatarContainer(headerEl) {
   for (var i = 0; i < sizedDivs.length; i++) {
     var d = sizedDivs[i];
     var w = d.offsetWidth, h = d.offsetHeight;
-    if (w >= 30 && w <= 70 && h >= 30 && h <= 70 && d.querySelector('img')) {
+    if (w >= 30 && w <= 70 && h >= 30 && h <= 70 && d.querySelector('img, image')) {
       return d;
     }
   }
@@ -4483,7 +4507,7 @@ function findHeaderAvatarContainer(headerEl) {
  */
 function findHeaderAvatarImg(headerEl) {
   if (!headerEl) return null;
-  var imgs = headerEl.querySelectorAll('img');
+  var imgs = headerEl.querySelectorAll('img, image');
   for (var i = 0; i < imgs.length; i++) {
     var img = imgs[i];
     var w = img.offsetWidth, h = img.offsetHeight;
@@ -4534,7 +4558,7 @@ function attachHeaderOverlay(container, photoUrl, phone) {
   }
 
   // Hide WhatsApp's img WITHOUT removing — React still manages it for layout
-  var img = container.querySelector('img');
+  var img = container.querySelector('img, image');
   if (img && img.style.opacity !== '0') {
     img.style.opacity = '0';
     Logger.debug('[HEADER-OV] Native img hidden (opacity:0)');
@@ -4600,7 +4624,7 @@ function ensureDualProfileHeaderOverlay(headerEl, photoUrl, phone) {
   if (!container._dpContainerMO) {
     container._dpContainerMO = new MutationObserver(function() {
       // Re-hide img in case React remounted it with opacity:1
-      var img2 = container.querySelector('img');
+      var img2 = container.querySelector('img, image');
       if (img2 && img2.style.opacity !== '0') {
         img2.style.opacity = '0';
         Logger.debug('[HEADER-OV] Container MO: re-hid img after remount');
@@ -4638,7 +4662,7 @@ function removeDualProfileHeaderOverlay(headerEl) {
     var overlay = container.querySelector('.' + DP_OVERLAY_CLASS);
     if (overlay) { overlay.remove(); Logger.info('[HEADER-OV] Overlay div removed'); }
     // Restore img visibility
-    var img = container.querySelector('img');
+    var img = container.querySelector('img, image');
     if (img) img.style.opacity = '';
     delete container.dataset[DP_CONTAINER_KEY];
   }
@@ -4673,7 +4697,7 @@ var _headerRevealTimer = null;
 function hideHeaderAvatar(headerEl) {
   var header = headerEl || (getHeader ? getHeader() : document.querySelector('#main header'));
   if (!header) return;
-  var img = header.querySelector('img');
+  var img = header.querySelector('img, image');
   if (!img || img.dataset.dpHidden === 'true') return;
 
   img.style.visibility = 'hidden';
@@ -4691,7 +4715,7 @@ function hideHeaderAvatar(headerEl) {
 function revealHeaderAvatar(headerEl) {
   var header = headerEl || (getHeader ? getHeader() : document.querySelector('#main header'));
   if (!header) return;
-  var imgs = header.querySelectorAll('img');
+  var imgs = header.querySelectorAll('img, image');
   for (var i = 0; i < imgs.length; i++) {
     if (imgs[i].dataset.dpHidden === 'true') {
       imgs[i].style.visibility = 'visible';
@@ -4749,7 +4773,7 @@ var _dpRootObserver = null;
 function getHeader() {
   var candidates = document.querySelectorAll('#main header, #main [role="banner"]');
   for (var i = 0; i < candidates.length; i++) {
-    if (candidates[i].querySelector('img')) return candidates[i];
+    if (candidates[i].querySelector('img, image')) return candidates[i];
   }
   return null;
 }
@@ -5317,7 +5341,7 @@ function applyOverlayToRow(row) {
   // Never show what we assigned to them (that shows on their device).
   // Every img assignment is scoped to rowPhone — prevents virtualised DOM
   // node reuse from bleeding one contact's photo onto another.
-  const avatarImg = row.querySelector('img');
+  const avatarImg = row.querySelector('img, image');
   if (!avatarImg) return;
 
   // If this img node was previously tagged to a DIFFERENT phone, it's a
@@ -5337,7 +5361,7 @@ function applyOverlayToRow(row) {
 
   if (p2pUrl) {
     if (avatarImg.dataset.dpApplied === p2pUrl && avatarImg.dataset.dpPhone === rowPhone) return;
-    if (!avatarImg.dataset.dpOrigSrc) avatarImg.dataset.dpOrigSrc = avatarImg.src || '';
+    if (!avatarImg.dataset.dpOrigSrc) avatarImg.dataset.dpOrigSrc = getImageSrc(avatarImg) || '';
     setImageSource(avatarImg, p2pUrl);
     avatarImg.dataset.dpApplied = p2pUrl;
     avatarImg.dataset.dpPhone   = rowPhone; // scope tag
@@ -5630,11 +5654,11 @@ function findAvatarImgInRow(row) {
   }
   // Fallback: src-pattern match — resilient against WhatsApp class/structure changes.
   // WhatsApp avatar CDN URLs always contain 'pps.whatsapp.net' or 'profile'.
-  var allImgs = row.querySelectorAll('img');
+  var allImgs = row.querySelectorAll('img, image');
   for (var k = 0; k < allImgs.length; k++) {
     if (allImgs[k].closest('[data-dualprofile-sidebar-overlay]')) continue;
     if (allImgs[k].closest('[data-dualprofile-overlay]')) continue;
-    var src = allImgs[k].src || '';
+    var src = getImageSrc(allImgs[k]) || '';
     if (src.includes('pps.whatsapp.net') || src.includes('cdn.whatsapp.net') || src.includes('whatsapp.net') || src.includes('profile')) {
       return allImgs[k];
     }
@@ -5809,12 +5833,13 @@ function installDualProfileClickHandler() {
       m.addedNodes.forEach(function(node) {
         if (node.nodeType !== 1) return;
         if (!node.querySelectorAll) return;
-        var imgs = node.querySelectorAll('img');
+        var imgs = node.querySelectorAll('img, image');
         imgs.forEach(function(img) {
           var styleH = img.style.height ? parseInt(img.style.height) : 0;
           var styleW = img.style.width ? parseInt(img.style.width) : 0;
           var isLarge = styleH >= 100 || styleW >= 100;
-          var isCDN = img.src && (img.src.includes('whatsapp.net') || img.src.includes('cdn'));
+          var _imgSrc = getImageSrc(img);
+          var isCDN = _imgSrc && (_imgSrc.includes('whatsapp.net') || _imgSrc.includes('cdn'));
           if (isLarge && isCDN && !img.getAttribute('data-dualprofile-drawer')) {
             setImageSource(img, photoUrl);
             img.setAttribute('data-dualprofile-drawer', 'true');
@@ -5922,14 +5947,14 @@ function applyForwardModalOverlays(dialog) {
 function applyForwardModalItemOverlay(item) {
   // Find the avatar image — size-filter first, src-pattern fallback
   var img = null;
-  var allItemImgs = item.querySelectorAll('img');
+  var allItemImgs = item.querySelectorAll('img, image');
   for (var ii = 0; ii < allItemImgs.length; ii++) {
     var iw = allItemImgs[ii].offsetWidth, ih = allItemImgs[ii].offsetHeight;
     if (iw >= 30 && iw <= 60 && ih >= 30 && ih <= 60) { img = allItemImgs[ii]; break; }
   }
   if (!img) {
     for (var ij = 0; ij < allItemImgs.length; ij++) {
-      var src = allItemImgs[ij].src || '';
+      var src = getImageSrc(allItemImgs[ij]) || '';
       if (src.includes('pps.whatsapp.net') || src.includes('cdn.whatsapp.net') || src.includes('whatsapp.net') || src.includes('profile')) { img = allItemImgs[ij]; break; }
     }
   }
@@ -6544,7 +6569,7 @@ function waitForWhatsApp() {
           delete img.dataset.dpOrigSrc;
         }
 
-        if (img.src === cached.url) {
+        if (getImageSrc(img) === cached.url) {
           img.setAttribute('data-dualprofile-preinit', 'true');
           _applied[phone] = true;
           continue; // already correct
@@ -6578,14 +6603,14 @@ function waitForWhatsApp() {
           if (hCached && hCached.url && isValidPhotoUrl(hCached.url)) {
             // Find avatar img — skip any already handled by pre-init or our lock
             var hImg = null;
-            var hImgs = header.querySelectorAll('img');
+            var hImgs = header.querySelectorAll('img, image');
             for (var hi = 0; hi < hImgs.length; hi++) {
               if (!hImgs[hi].dataset.dpApplied && !hImgs[hi].dataset.dualprofilePreinit) {
                 var hw = hImgs[hi].offsetWidth || 40;
                 if (hw >= 20 && hw <= 70) { hImg = hImgs[hi]; break; }
               }
             }
-            if (!hImg) hImg = header.querySelector('img'); // last resort
+            if (!hImg) hImg = header.querySelector('img, image'); // last resort
             if (hImg) {
               // Use overlay architecture — hide img, attach overlay div
               hImg.style.opacity = '0';
