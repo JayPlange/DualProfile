@@ -1,3 +1,21 @@
+## v1.0.23 — 2026-07-16
+- **Critical sync bug:** on a machine running both Chrome and Edge (which
+  can share the same extension ID), if a browser's very first Convex
+  registration happened to land on the shared extension-ID-keyed record
+  before its phone number was entered, that wrong ID stayed cached
+  forever — the recovery logic only re-derived it when the cached ID was
+  completely missing, never when it was simply stale/wrong. Every
+  assignment from the affected browser silently wrote to the wrong
+  Convex user record, so the other side's phone-hash lookup never found
+  it. Reported directly: assignments worked Edge -> Chrome but not
+  Chrome -> Edge.
+- Fixed in both places this pattern occurred (`_syncToConvexInBackground`
+  and the pending-assignment retry-queue flush): the extension now always
+  re-derives its Convex user ID from the device's own phone-number hash
+  before syncing, rather than only when the cached ID is missing.
+  Self-healing — no reinstall or data reset needed, takes effect on the
+  next assignment.
+
 ## v1.0.22 — 2026-07-16
 - **Critical entitlement bug:** license activation never recognized the
   Annual tier at all — `handleActivateLicense` / `handleValidateLicense`

@@ -174,8 +174,10 @@ async function syncPendingAssignments() {
 
     console.debug('[DualProfile][SYNC] flushing', queue.length, 'pending assignment(s)');
 
-    // Self-heal: recover _convexUserId if SW was killed and restarted
-    if (!SyncManager._convexUserId && SyncManager._myPhoneHash) {
+    // Always refresh _convexUserId from phoneHash before syncing queued
+    // items — see _syncToConvexInBackground for why this can't be
+    // conditioned on _convexUserId being null (see fix note there).
+    if (SyncManager._myPhoneHash) {
       try { await SyncManager.registerUser(SyncManager._myPhoneHash); } catch(_) {}
     }
     // Still no userId — cannot sync yet, leave queue intact
@@ -1158,9 +1160,18 @@ async function _syncToConvexInBackground(message) {
   // Ensure SyncManager is initialized
   await _syncInitPromise;
 
-  // Self-heal: recover convexUserId if SW was killed and restarted
-  if (!SyncManager._convexUserId && SyncManager._myPhoneHash && DualProfileConfig.isSyncEnabled()) {
-    console.debug('[DualProfile][SW] _syncToConvexInBackground — recovering convexUserId');
+  // Always re-derive convexUserId from the correct phoneHash before syncing.
+  // Previously this only fired when _convexUserId was completely missing —
+  // but Chrome and Edge on the same machine can share an extensionId, and if
+  // a browser's very first registerUser() call (before its phone number was
+  // entered) landed on that shared extensionId-keyed record, _convexUserId
+  // would get cached as that wrong id and never self-correct, since it was
+  // never null again. Every assignment from that browser would then write
+  // to the wrong Convex user, so the other side's phone-hash lookup would
+  // never find it. registerUser() is a cheap idempotent find-or-create by
+  // phoneHash, so it's safe to call every time we have a phone hash.
+  if (SyncManager._myPhoneHash && DualProfileConfig.isSyncEnabled()) {
+    console.debug('[DualProfile][SW] _syncToConvexInBackground — refreshing convexUserId from phoneHash');
     try { await SyncManager.registerUser(SyncManager._myPhoneHash); } catch(_) {}
   }
 
