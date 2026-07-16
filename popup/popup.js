@@ -92,9 +92,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   let photos = { photo1: null, photo2: null };
   let isPro = false;
-  let isBulk = false;   // true for Annual and Lifetime tiers
-  let bulkMode = false; // true when bulk selection UI is active
-  let bulkSelected = new Set(); // set of contact names selected in bulk mode
+  let isBulk = false;       // Annual+
+  let isSchedule = false;   // Annual+
+  let isExportImport = false; // Lifetime only
+  let isMultiDevice = false;  // Lifetime only
+  let bulkMode = false;
+  let bulkSelected = new Set();
   let currentTheme = 'dark';
   let previewActive = false;
 
@@ -304,7 +307,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Initialize Pro features (gated by isPro)
       initProFeatures(isPro).catch(e => console.warn('[DualProfile] Pro features init error:', e));
-      initBulkAssign(isBulk);
+      initBulkAssign(isBulk);  // bulk = Annual+
 
       // Initialize sync status
       await initializeSync();
@@ -761,8 +764,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // During an active trial, treat as Pro for UI purposes
       const effective = tierData.effectiveTier || (currentTier === 'pro' || currentTier === 'lifetime' ? 'pro' : 'free');
-      isPro = (effective === 'pro' || effective === 'trial' || effective === 'annual');
-      isBulk = (effective === 'annual' || currentTier === 'annual' || currentTier === 'lifetime');
+      const limits = tierData.limits || {};
+      // Pro = has photoHistory (Pro, Annual, Lifetime)
+      isPro        = !!limits.photoHistory;
+      isBulk       = !!limits.bulkAssign;
+      isSchedule   = !!limits.schedule;
+      isExportImport = !!limits.exportImport;
+      isMultiDevice  = !!limits.multiDevice;
 
       updateDevModeUI(tierData);
       updateLimitInfo();
@@ -792,7 +800,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const confirmed = await DualProfileStorage.getUserTier();
       isDevMode = confirmed.isDevMode ?? enabled;
       currentTier = confirmed.tier ?? (enabled ? tier : 'free');
-      isPro = (currentTier === 'pro' || currentTier === 'lifetime');
+      const dmLimits = confirmed.limits || {};
+      isPro          = !!dmLimits.photoHistory;
+      isBulk         = !!dmLimits.bulkAssign;
+      isSchedule     = !!dmLimits.schedule;
+      isExportImport = !!dmLimits.exportImport;
+      isMultiDevice  = !!dmLimits.multiDevice;
 
       updateDevModeUI({ tier: currentTier, isDevMode: enabled });
       updateProUI();
@@ -2452,8 +2465,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Show upgrade modal
   // variant: 'working' — fired after first successful contact sync (the peak desire moment)
   //          'standard' — fired from manual upgrade click or Settings
-  function showUpgradeModal(variant) {
+  function showUpgradeModal(variant, tierHint) {
     variant = variant || 'standard';
+    // tierHint: 'pro' | 'annual' | 'lifetime' — which tier unlocks this feature
+    const requiredTier = tierHint || 'pro';
     const existing = document.querySelector('.upgrade-modal');
     if (existing) existing.remove();
 
@@ -3004,7 +3019,7 @@ async function initPhotoHistory(isPro) {
     const inner = section.querySelector('.pro-card');
     if (inner) inner.classList.toggle('locked', !isPro);
     if (wrapper) {
-      wrapper.onclick = !isPro ? () => showUpgradeModal('standard') : null;
+      wrapper.onclick = !isPro ? () => showUpgradeModal('standard', 'pro') : null;
       wrapper.style.cursor = !isPro ? 'not-allowed' : 'default';
     }
   }
@@ -3051,8 +3066,9 @@ function renderHistorySlot(containerId, items, slot) {
 
 // ── Scheduled Photos ──────────────────────────────────────────────────────────
 async function initSchedule(isPro) {
+  // Scheduled Photos — Annual+ feature
   hideProGate('scheduleForm', 'scheduleProGate');
-  applyProCardLock('scheduleSection', 'scheduleForm', isPro);
+  applyProCardLock('scheduleSection', 'scheduleForm', isPro, 'annual');
 
   // Load existing schedule
   const resp = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULE' });
@@ -3123,7 +3139,8 @@ function bindScheduleUI(isPro) {
 
 // ── Export / Import ───────────────────────────────────────────────────────────
 function bindExportImport(isPro) {
-  applyProCardLock('exportSection', 'exportForm', isPro);
+  // Export/Import — Lifetime feature
+  applyProCardLock('exportSection', 'exportForm', isPro, 'lifetime');
   const exportBtn = document.getElementById('exportBtn');
   const importInput = document.getElementById('importFileInput');
   const exportGateBtn = document.getElementById('exportUpgradeBtn');
@@ -3182,12 +3199,13 @@ async function syncPrefsIfPro(isPro) {
 // ── Pro card lock helper ──────────────────────────────────────────────────────
 // Wraps the inner form in a pro-card div and applies locked state when !isPro.
 // The outer wrapper catches upgrade modal clicks while inner is pointer-events:none.
-function applyProCardLock(sectionId, formId, isPro) {
+function applyProCardLock(sectionId, formId, hasAccess, tierHint) {
+  // tierHint: which tier unlocks this — 'pro' | 'annual' | 'lifetime'
+  const tier = tierHint || 'pro';
   const section = document.getElementById(sectionId);
   const form = document.getElementById(formId);
   if (!section || !form) return;
 
-  // Ensure wrapper exists
   let wrapper = section.querySelector('.pro-card-wrapper');
   if (!wrapper) {
     wrapper = document.createElement('div');
@@ -3205,10 +3223,26 @@ function applyProCardLock(sectionId, formId, isPro) {
     }
   }
 
+  // Add tier badge to wrapper so user knows what they need
+  let badge = wrapper.querySelector('.pro-card-tier-badge');
+  if (!hasAccess) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'pro-card-tier-badge';
+      wrapper.appendChild(badge);
+    }
+    const labels = { pro: '🔒 Pro', annual: '🔒 Annual', lifetime: '🔒 Lifetime' };
+    badge.textContent = labels[tier] || '🔒 Pro';
+    badge.style.cssText = 'position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);z-index:5;pointer-events:none;';
+    wrapper.style.position = 'relative';
+  } else if (badge) {
+    badge.remove();
+  }
+
   const inner = section.querySelector('.pro-card');
-  if (inner) inner.classList.toggle('locked', !isPro);
-  wrapper.onclick = !isPro ? () => showUpgradeModal('standard') : null;
-  wrapper.style.cursor = !isPro ? 'not-allowed' : 'default';
+  if (inner) inner.classList.toggle('locked', !hasAccess);
+  wrapper.onclick = !hasAccess ? () => showUpgradeModal('standard', tier) : null;
+  wrapper.style.cursor = !hasAccess ? 'not-allowed' : 'default';
 }
 
 // ── Bulk Assignment (Annual & Lifetime) ───────────────────────────────────────
@@ -3330,11 +3364,15 @@ function applyProCardLock(sectionId, formId, isPro) {
 
 // ── Init all Pro features ─────────────────────────────────────────────────────
 async function initProFeatures(isPro) {
+  // isPro = photoHistory access (Pro, Annual, Lifetime)
+  // isSchedule = scheduled photos (Annual, Lifetime)
+  // isExportImport = export/import (Lifetime only)
+  // isMultiDevice = multi-device sync (Lifetime only)
   await initPhotoHistory(isPro);
-  await initSchedule(isPro);
-  bindScheduleUI(isPro);
-  bindExportImport(isPro);
-  await syncPrefsIfPro(isPro);
+  await initSchedule(isSchedule);
+  bindScheduleUI(isSchedule);
+  bindExportImport(isExportImport);
+  await syncPrefsIfPro(isMultiDevice);
 }
 });
 
