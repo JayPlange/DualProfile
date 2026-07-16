@@ -1215,6 +1215,30 @@ body {
   color: var(--text-muted);
 }
 
+.pro-feature-tier {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 3px 8px;
+}
+
+.pro-feature-tier--annual {
+  color: var(--accent-primary);
+  background: rgba(37,211,102,0.1);
+  border-color: rgba(37,211,102,0.3);
+}
+
+.pro-feature-tier--lifetime {
+  color: #f0c040;
+  background: rgba(240,192,64,0.1);
+  border-color: rgba(240,192,64,0.3);
+}
+
 .btn-pro-upgrade {
   width: 100%;
   padding: 14px;
@@ -1530,6 +1554,25 @@ body {
   color: var(--accent-primary);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-base);
+}
+
+.feature-tier-tag {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+  background: rgba(37,211,102,0.1);
+  border: 1px solid rgba(37,211,102,0.3);
+  border-radius: 20px;
+  padding: 2px 8px;
+}
+
+.feature-tier-tag--lifetime {
+  color: #f0c040;
+  background: rgba(240,192,64,0.1);
+  border-color: rgba(240,192,64,0.3);
 }
 
 .feature-note {

@@ -2499,6 +2499,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                      : isExpired ? dpT('trial_upgrade_cta')
                      : null;
 
+    const tierPrice = { pro: '£9.99<span>/month</span>', annual: '£59<span>/year</span>', lifetime: '£79<span>/one-time</span>' };
+
     const modal = document.createElement('div');
     modal.className = 'upgrade-modal'
       + (isWorking ? ' upgrade-modal--working' : '')
@@ -2510,7 +2512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="modal-icon">${isWorking ? '✅' : isExpired ? '🔒' : '&#x1F3AD;'}</div>
           <h2>${modalTitle}</h2>
           <p class="modal-limit-msg">${modalSub}</p>
-          ${!isWorking && !isExpired ? `<p class="modal-price">£9.99<span>/month</span></p>` : ''}
+          ${!isWorking && !isExpired ? `<p class="modal-price">${tierPrice[requiredTier] || tierPrice.pro}</p>` : ''}
         </div>
         <ul class="modal-features">
           <li>
@@ -2520,30 +2522,38 @@ document.addEventListener('DOMContentLoaded', async () => {
           </li>
           <li>
             <span class="feature-check">&#x2713;</span>
-            <strong>${dpT('pro_quickswitch_title')}</strong>
-            <span class="feature-note">${dpT('pro_quickswitch_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-check">&#x2713;</span>
             <strong>${dpT('pro_history_title')}</strong>
             <span class="feature-note">${dpT('pro_history_desc')}</span>
           </li>
           <li>
             <span class="feature-check">&#x2713;</span>
+            <strong>${dpT('pro_photohistory_title')}</strong>
+            <span class="feature-note">${dpT('pro_photohistory_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag">${dpT('tag_annual')}</span>
+            <strong>${dpT('feat_bulk_title')}</strong>
+            <span class="feature-note">${dpT('bulk_teaser')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag">${dpT('tag_annual')}</span>
+            <strong>${dpT('pro_schedule_title')}</strong>
+            <span class="feature-note">${dpT('pro_schedule_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
+            <strong>${dpT('pro_export_title')}</strong>
+            <span class="feature-note">${dpT('pro_export_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
+            <strong>${dpT('pro_multidevice_title')}</strong>
+            <span class="feature-note">${dpT('pro_multidevice_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
             <strong>${dpT('pro_support_title')}</strong>
             <span class="feature-note">${dpT('pro_support_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-note">&#x1F4F7; ${dpT('pro_photohistory_title')} &mdash; ${dpT('pro_photohistory_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-note">&#x1F553; ${dpT('pro_schedule_title')} &mdash; ${dpT('pro_schedule_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-note">&#x1F4E6; ${dpT('pro_export_title')} &mdash; ${dpT('pro_export_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-note">&#x1F4F1; ${dpT('pro_multidevice_title')} &mdash; ${dpT('pro_multidevice_desc')}</span>
           </li>
         </ul>
 
@@ -2551,12 +2561,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="purchase-section">
           ${(isWorking || isExpired) ? `<button class="btn-buy-pro btn-buy-pro--full" id="buyProBtn"><span>${ctaLabel}</span></button>` : `
           <div class="pricing-row">
+            ${requiredTier === 'lifetime' ? `
+            <button class="btn-buy-pro btn-buy-pro--full" id="buyLifetimeBtn">
+              <span>${dpT('upgrade_lifetime')}</span>
+            </button>` : requiredTier === 'annual' ? `
+            <button class="btn-buy-pro" id="buyAnnualBtn">
+              <span>${dpT('upgrade_annual')}</span>
+            </button>
+            <button class="btn-buy-lifetime" id="buyLifetimeBtn">
+              <span>${dpT('upgrade_lifetime')}</span>
+            </button>` : `
             <button class="btn-buy-pro" id="buyProBtn">
               <span>${dpT('upgrade_monthly')}</span>
             </button>
             <button class="btn-buy-lifetime" id="buyLifetimeBtn">
               <span>${dpT('upgrade_lifetime')}</span>
-            </button>
+            </button>`}
           </div>`}
           <p class="purchase-note">${dpT('upgrade_payment_note')}</p>
 
@@ -2607,9 +2627,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (paymentEnabled) {
       // Buy button → opens Lemon Squeezy checkout in new tab
       const buyBtn = modal.querySelector('#buyProBtn');
-      buyBtn.addEventListener('click', () => {
-        chrome.tabs.create({ url: checkoutUrl });
-      });
+      if (buyBtn) {
+        buyBtn.addEventListener('click', () => {
+          chrome.tabs.create({ url: checkoutUrl });
+        });
+      }
+
+      const buyAnnualBtn = modal.querySelector('#buyAnnualBtn');
+      if (buyAnnualBtn) {
+        const annualUrl = typeof DualProfileConfig !== 'undefined'
+          ? (DualProfileConfig.getAnnualCheckoutUrl() || checkoutUrl)
+          : checkoutUrl;
+        buyAnnualBtn.addEventListener('click', () => {
+          if (annualUrl) chrome.tabs.create({ url: annualUrl });
+        });
+      }
 
       const buyLifetimeBtn = modal.querySelector('#buyLifetimeBtn');
       if (buyLifetimeBtn) {
@@ -3266,13 +3298,14 @@ function applyProCardLock(sectionId, formId, hasAccess, tierHint) {
       // Non-bulk tiers — show upgrade teaser instead
       toggleWrap.classList.remove('hidden');
       toggleBtn.textContent = '⚡ Bulk select — Annual';
-      toggleBtn.style.opacity = '0.5';
-      toggleBtn.onclick = () => showUpgradeModal('standard');
+      toggleBtn.classList.add('locked-teaser');
+      toggleBtn.onclick = () => showUpgradeModal('standard', 'annual');
       return;
     }
 
     // Annual / Lifetime — show full bulk UI
     toggleWrap.classList.remove('hidden');
+    toggleBtn.classList.remove('locked-teaser');
 
     toggleBtn.onclick = () => {
       bulkMode = !bulkMode;

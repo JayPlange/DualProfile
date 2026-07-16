@@ -419,11 +419,11 @@
         <button class="btn-danger-outline" id="clearDataBtn" data-i18n="settings_clear">Clear All Data</button>
       </div>
 
-      <!-- Scheduled Photos (Pro) -->
+      <!-- Scheduled Photos (Annual+) -->
       <div class="settings-group pro-section" id="scheduleSection">
         <div class="pro-section-header">
           <h3 data-i18n="schedule_panel_title">Scheduled Photos</h3>
-          <span class="pro-badge">PRO</span>
+          <span class="pro-badge">ANNUAL</span>
         </div>
         <div id="scheduleForm">
           <div class="setting-item">
@@ -475,11 +475,11 @@
         </div>
       </div>
 
-      <!-- Export / Import (Pro) -->
+      <!-- Export / Import (Lifetime) -->
       <div class="settings-group pro-section" id="exportSection">
         <div class="pro-section-header">
           <h3 data-i18n="pro_export_title">Export &amp; Import Assignments</h3>
-          <span class="pro-badge">PRO</span>
+          <span class="pro-badge">LIFETIME</span>
         </div>
         <div id="exportForm">
           <div class="setting-item">
@@ -535,11 +535,10 @@
         </div>
       </div>
 
-      <!-- Pro Features Section -->
+      <!-- Plans & Features Section -->
       <div class="pro-section">
         <div class="pro-section-header">
-          <h3 data-i18n="pro_features_title">Pro Features</h3>
-          <span class="badge badge-pro">PRO</span>
+          <h3 data-i18n="pro_features_title">Plans &amp; Features</h3>
         </div>
 
         <div class="pro-feature-list">
@@ -549,6 +548,7 @@
               <strong data-i18n="pro_unlimited_title">Unlimited Contacts</strong>
               <span data-i18n="pro_unlimited_desc">Assign to as many contacts as you want</span>
             </div>
+            <span class="pro-feature-tier">PRO</span>
           </div>
 
           <div class="pro-feature-item">
@@ -557,6 +557,15 @@
               <strong data-i18n="pro_photohistory_title">Photo History &amp; Revert</strong>
               <span data-i18n="pro_photohistory_desc">Restore any of your last 3 uploaded photos</span>
             </div>
+            <span class="pro-feature-tier">PRO</span>
+          </div>
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x26A1;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="feat_bulk_title">Bulk Contact Assignment</strong>
+              <span data-i18n="bulk_teaser">Select all your work contacts at once. Annual plan.</span>
+            </div>
+            <span class="pro-feature-tier pro-feature-tier--annual">ANNUAL</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F553;</span>
@@ -564,6 +573,7 @@
               <strong data-i18n="pro_schedule_title">Scheduled Photos</strong>
               <span data-i18n="pro_schedule_desc">Auto-switch photos by day and time</span>
             </div>
+            <span class="pro-feature-tier pro-feature-tier--annual">ANNUAL</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F4E6;</span>
@@ -571,6 +581,7 @@
               <strong data-i18n="pro_export_title">Export &amp; Import Assignments</strong>
               <span data-i18n="pro_export_desc">Backup and restore all your contact assignments</span>
             </div>
+            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F4F1;</span>
@@ -578,11 +589,20 @@
               <strong data-i18n="pro_multidevice_title">Multi-Device Sync</strong>
               <span data-i18n="pro_multidevice_desc">Your preferences sync across all your devices</span>
             </div>
+            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
+          </div>
+          <div class="pro-feature-item">
+            <span class="pro-feature-icon">&#x2B50;</span>
+            <div class="pro-feature-info">
+              <strong data-i18n="pro_support_title">Priority Support</strong>
+              <span data-i18n="pro_support_desc">Front-of-queue help when you need it</span>
+            </div>
+            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
           </div>
         </div>
 
         <button class="btn-pro-upgrade" id="upgradeFromSettings" data-i18n="unlock_pro">
-          <span data-i18n="unlock_pro">Unlock Pro — £9.99/mo</span>
+          <span data-i18n="unlock_pro">See plans — from £9.99/mo</span>
         </button>
       </div>
     </section>
