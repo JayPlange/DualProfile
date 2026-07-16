@@ -1,3 +1,15 @@
+## v1.0.21 — 2026-07-16
+- Onboarding Step 1 rewritten to match the landing page hero's pitch:
+  now opens with "You already change how you talk depending on who's
+  listening" instead of a "people have been asking WhatsApp for years"
+  social-proof hook
+- New bridge line connects that pain point to the existing Reddit-quotes
+  proof (previously the quotes appeared with no stated pain point above
+  them)
+- Sub line tightened to match the landing page's "switched automatically"
+  phrasing
+- Applied across all 9 languages; new .ob-headline-bridge CSS class
+
 ## v1.0.20 — 2026-07-16
 - World Cup: Jul 18 set to 3rd Place Playoff (France vs England, 9:00 PM),
   Jul 19 set to the Final (Spain vs Argentina, 7:00 PM)
