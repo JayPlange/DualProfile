@@ -529,6 +529,85 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return true;
 
+    // Read-only diagnostic — inspect current sync state directly from the
+    // service worker console: chrome.runtime.sendMessage({type:'DEBUG_SYNC_STATE'}, console.log)
+    case 'DEBUG_SYNC_STATE':
+      (async () => {
+        await _syncInitPromise;
+        const stored = await swGet(['myPhone', 'myPhoneHash', 'convexUserId', 'syncEnabled', 'pendingAssignments']);
+        let convexOwnerCheck = null;
+        try {
+          if (SyncManager._myPhoneHash) {
+            convexOwnerCheck = await ConvexHTTP.query('users:getUserByPhone', { phoneHash: SyncManager._myPhoneHash });
+          }
+        } catch (e) {
+          convexOwnerCheck = { error: e.message };
+        }
+        sendResponse({
+          extensionId: chrome.runtime.id,
+          syncEnabled: DualProfileConfig.isSyncEnabled(),
+          inMemory: {
+            convexUserId: SyncManager._convexUserId,
+            myPhoneHash: SyncManager._myPhoneHash,
+          },
+          inStorage: {
+            myPhone: stored.myPhone || null,
+            myPhoneHash: stored.myPhoneHash || null,
+            convexUserId: stored.convexUserId || null,
+            syncEnabled: stored.syncEnabled,
+          },
+          pendingAssignmentsCount: (stored.pendingAssignments || []).length,
+          pendingAssignments: stored.pendingAssignments || [],
+          // What Convex itself has on file for this phone hash right now —
+          // if inMemory.convexUserId doesn't match this record's _id, that's the bug.
+          convexRecordForMyPhoneHash: convexOwnerCheck,
+          liveSubActive: _liveSubActive,
+        });
+      })();
+      return true;
+
+    // Read-only diagnostic — from the VIEWER side, ask Convex directly what
+    // photo it would return for a given owner's phone number, bypassing the
+    // content script / DOM layer entirely. Run from Edge's console:
+    // chrome.runtime.sendMessage({type:'DEBUG_CHECK_PHOTO_FOR_OWNER', ownerPhone:'447700900123'}, console.log)
+    // Pass the OTHER person's raw phone number (in international format,
+    // no +). This isolates: if this returns a photo URL but the chat header
+    // still doesn't show it, the bug is in rendering, not sync.
+    case 'DEBUG_CHECK_PHOTO_FOR_OWNER':
+      (async () => {
+        await _syncInitPromise;
+        try {
+          const normalized = SyncManager.normalizePhone(message.ownerPhone || '');
+          if (!normalized) {
+            sendResponse({ error: 'Could not normalize that phone number — pass digits only, international format, no +' });
+            return;
+          }
+          const ownerPhoneHash = await CryptoUtils.hashPhone(normalized);
+          const ownerRecord = await ConvexHTTP.query('users:getUserByPhone', { phoneHash: ownerPhoneHash });
+          let photoUrl = null;
+          if (SyncManager._myPhoneHash) {
+            photoUrl = await ConvexHTTP.query('assignments:getPhotoForViewer', {
+              ownerPhoneHash: ownerPhoneHash,
+              viewerPhoneHash: SyncManager._myPhoneHash,
+            });
+          }
+          sendResponse({
+            normalizedOwnerPhone: normalized,
+            ownerPhoneHash: ownerPhoneHash,
+            ownerExistsInConvex: !!ownerRecord,
+            ownerRecord: ownerRecord,
+            myPhoneHash: SyncManager._myPhoneHash,
+            photoUrlForMe: photoUrl,
+            // If ownerExistsInConvex is true but photoUrlForMe is null,
+            // the owner's assignment either doesn't exist, doesn't target
+            // my phone hash, or points to a photo with isActive !== true.
+          });
+        } catch (e) {
+          sendResponse({ error: e.message });
+        }
+      })();
+      return true;
+
     case 'RESTART_LIVE_SUB':
       // Called when user registers phone after init
       (async () => {

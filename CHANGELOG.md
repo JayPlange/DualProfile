@@ -1,3 +1,20 @@
+## v1.0.24 — 2026-07-16
+- Added two read-only diagnostic message handlers to debug the
+  cross-browser sync issue directly, since v1.0.23's fix alone didn't
+  resolve it for the reporting user and further guessing without real
+  data wasn't productive:
+  - `DEBUG_SYNC_STATE` — dumps the sending browser's in-memory and
+    on-disk Convex user ID / phone hash, plus what Convex itself has on
+    file for that phone hash (mismatch there is the bug this fix
+    targeted).
+  - `DEBUG_CHECK_PHOTO_FOR_OWNER` — from the *receiving* browser, asks
+    Convex directly what photo it would return for a given owner's
+    phone number, bypassing the content script/DOM layer entirely. If
+    this returns a URL but the chat header still doesn't show it, the
+    remaining bug is in rendering, not sync — a different fix entirely.
+  Both callable from the service worker's DevTools console via
+  `chrome.runtime.sendMessage({type: '...'}, console.log)`.
+
 ## v1.0.23 — 2026-07-16
 - **Critical sync bug:** on a machine running both Chrome and Edge (which
   can share the same extension ID), if a browser's very first Convex
