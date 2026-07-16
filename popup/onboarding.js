@@ -5,9 +5,10 @@
 const DP_I18N = {
   en: {
     lang_label: 'Language',
-    headline: 'People have been asking WhatsApp for years.',
+    headline: "You already change how you talk depending on who's listening.",
+    headline_bridge: "Your photo doesn't. Turns out people have wanted this for years:",
     now_exists: 'Now it exists.',
-    sub: 'Show different profile photos to different contacts — your boss sees one, your friends see another. Same number. Same WhatsApp.',
+    sub: 'Assign different photos to different contacts — your boss sees one, your friends see another. Switched automatically. Same number, same WhatsApp.',
     free_to_start: 'Free to start',
     works_on_web: 'Works on WhatsApp Web',
     two_minutes: '2 minutes to set up',
@@ -338,9 +339,10 @@ const DP_I18N = {
   },
   es: {
     lang_label: 'Idioma',
-    headline: 'La gente le ha pedido esto a WhatsApp durante años.',
+    headline: 'Ya cambias tu forma de hablar según quién te escucha.',
+    headline_bridge: 'Tu foto no. Resulta que la gente lleva años pidiendo esto:',
     now_exists: 'Ahora existe.',
-    sub: 'Muestra fotos de perfil diferentes a contactos distintos — tu jefe ve una, tus amigos ven otra. Mismo número. Mismo WhatsApp.',
+    sub: 'Asigna fotos diferentes a contactos distintos — tu jefe ve una, tus amigos ven otra. Cambiada automáticamente. Mismo número, mismo WhatsApp.',
     free_to_start: 'Gratis para empezar',
     works_on_web: 'Funciona en WhatsApp Web',
     two_minutes: '2 minutos de configuración',
@@ -656,9 +658,10 @@ const DP_I18N = {
   },
   zh: {
     lang_label: '语言',
-    headline: '人们已经向WhatsApp提出这个请求多年了。',
+    headline: '你和不同的人说话方式本来就不一样。',
+    headline_bridge: '你的照片却没有。原来大家已经要求这个功能很多年了：',
     now_exists: '现在它存在了。',
-    sub: '向不同联系人显示不同的头像照片 — 你的老板看到一张，朋友看到另一张。同一个号码，同一个WhatsApp。',
+    sub: '为不同联系人分配不同的头像——老板看到一张，朋友看到另一张。自动切换。同一个号码，同一个WhatsApp。',
     free_to_start: '免费开始',
     works_on_web: '适用于WhatsApp Web',
     two_minutes: '2分钟设置',
@@ -966,9 +969,10 @@ const DP_I18N = {
   },
   ja: {
     lang_label: '言語',
-    headline: '人々はずっとWhatsAppにこれを求めてきました。',
+    headline: '話す相手によって話し方はすでに変えているはず。',
+    headline_bridge: 'でも写真は変わっていません。実は何年も前から求められていました：',
     now_exists: 'ついに実現しました。',
-    sub: '異なる連絡先に異なるプロフィール写真を表示 — 上司には1枚、友達には別の1枚。同じ番号、同じWhatsApp。',
+    sub: '連絡先ごとに異なるプロフィール写真を割り当て — 上司には1枚、友達には別の1枚。自動で切り替わります。同じ番号、同じWhatsApp。',
     free_to_start: '無料で始める',
     works_on_web: 'WhatsApp Webで動作',
     two_minutes: '設定2分',
@@ -1278,9 +1282,10 @@ const DP_I18N = {
   },
   fr: {
     lang_label: 'Langue',
-    headline: 'Les gens demandent ça à WhatsApp depuis des années.',
+    headline: 'Vous changez déjà votre façon de parler selon qui vous écoute.',
+    headline_bridge: 'Pas votre photo. Les gens réclament ça depuis des années :',
     now_exists: 'Maintenant, ça existe.',
-    sub: "Affichez différentes photos de profil à différents contacts — votre patron voit l\'une, vos amis voient l\'autre. Même numéro. Même WhatsApp.",
+    sub: "Attribuez des photos différentes à différents contacts — votre patron en voit une, vos amis une autre. Changée automatiquement. Même numéro, même WhatsApp.",
     free_to_start: 'Gratuit pour commencer',
     works_on_web: 'Fonctionne sur WhatsApp Web',
     two_minutes: '2 minutes de configuration',
@@ -1590,9 +1595,10 @@ const DP_I18N = {
   },
   pt: {
     lang_label: 'Idioma',
-    headline: 'As pessoas pedem isso ao WhatsApp há anos.',
+    headline: 'Você já muda a forma como fala dependendo de quem está ouvindo.',
+    headline_bridge: 'Sua foto não. Acontece que as pessoas pedem isso há anos:',
     now_exists: 'Agora existe.',
-    sub: 'Mostre fotos de perfil diferentes para contatos diferentes — seu chefe vê uma, seus amigos veem outra. Mesmo número. Mesmo WhatsApp.',
+    sub: 'Atribua fotos diferentes a contatos diferentes — seu chefe vê uma, seus amigos veem outra. Trocada automaticamente. Mesmo número, mesmo WhatsApp.',
     free_to_start: 'Grátis para começar',
     works_on_web: 'Funciona no WhatsApp Web',
     two_minutes: '2 minutos para configurar',
@@ -1902,9 +1908,10 @@ const DP_I18N = {
   },
   de: {
     lang_label: 'Sprache',
-    headline: 'Menschen bitten WhatsApp seit Jahren darum.',
+    headline: 'Du sprichst schon anders, je nachdem, wer zuhört.',
+    headline_bridge: 'Dein Foto nicht. Menschen wünschen sich das seit Jahren:',
     now_exists: 'Jetzt gibt es es.',
-    sub: 'Zeige verschiedenen Kontakten verschiedene Profilfotos — dein Chef sieht eines, deine Freunde ein anderes. Gleiche Nummer. Gleiches WhatsApp.',
+    sub: 'Weise verschiedenen Kontakten verschiedene Fotos zu — dein Chef sieht eines, deine Freunde ein anderes. Automatisch gewechselt. Gleiche Nummer, gleiches WhatsApp.',
     free_to_start: 'Kostenlos starten',
     works_on_web: 'Funktioniert auf WhatsApp Web',
     two_minutes: '2 Minuten Einrichtung',
@@ -2214,9 +2221,10 @@ const DP_I18N = {
   },
   hi: {
     lang_label: 'भाषा',
-    headline: 'लोग WhatsApp से सालों से यह माँग रहे थे।',
+    headline: 'आप पहले से ही सुनने वाले के हिसाब से बात करने का तरीका बदलते हैं।',
+    headline_bridge: 'आपकी फोटो नहीं बदलती। पता चला कि लोग सालों से यही माँग रहे थे:',
     now_exists: 'अब यह मौजूद है।',
-    sub: 'अलग-अलग संपर्कों को अलग-अलग प्रोफ़ाइल फ़ोटो दिखाएं — आपका बॉस एक देखे, दोस्त दूसरी। एक ही नंबर। वही WhatsApp।',
+    sub: 'अलग-अलग कॉन्टैक्ट को अलग-अलग फोटो असाइन करें — आपका बॉस एक देखे, दोस्त दूसरी। अपने आप बदलते हुए। एक ही नंबर, वही WhatsApp।',
     free_to_start: 'मुफ़्त में शुरू करें',
     works_on_web: 'WhatsApp Web पर काम करता है',
     two_minutes: '2 मिनट में सेटअप',
@@ -2526,9 +2534,10 @@ const DP_I18N = {
   },
   ru: {
     lang_label: 'Язык',
-    headline: 'Люди годами просили WhatsApp об этом.',
+    headline: 'Вы уже говорите по-разному в зависимости от того, кто слушает.',
+    headline_bridge: 'Ваше фото — нет. Оказывается, люди просили об этом годами:',
     now_exists: 'Теперь это существует.',
-    sub: 'Показывайте разные фото профиля разным контактам — начальник видит одно, друзья — другое. Тот же номер. Тот же WhatsApp.',
+    sub: 'Назначьте разные фото разным контактам — начальник видит одно, друзья — другое. Переключается автоматически. Тот же номер, тот же WhatsApp.',
     free_to_start: 'Начать бесплатно',
     works_on_web: 'Работает в WhatsApp Web',
     two_minutes: 'Настройка за 2 минуты',
@@ -3054,6 +3063,7 @@ class DualProfileOnboarding {
 
         <div class="ob-logo-mark">🎭</div>
         <h1 class="ob-headline">${dpT('headline')}</h1>
+        <p class="ob-headline-bridge">${dpT('headline_bridge')}</p>
 
         <div class="ob-reddit-quotes">
           <div class="ob-reddit-quote">

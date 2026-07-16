@@ -2157,6 +2157,16 @@
   letter-spacing: -0.5px;
 }
 
+.ob-headline-bridge {
+  font-size: 15px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--text-secondary, var(--text-muted));
+  line-height: 1.4;
+  margin: -6px 0 16px;
+  opacity: 0.85;
+}
+
 .ob-title {
   font-size: 20px;
   font-weight: 700;
