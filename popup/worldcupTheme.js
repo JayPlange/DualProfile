@@ -155,17 +155,18 @@
       pattern: 'azulejo',     // Portuguese blue tile — azulejo patterns
     },
     {
-      day: 21, date: '2026-07-18', country: 'Algeria', flag: '🇩🇿',
-      primary: '#006233', secondary: '#FFFFFF', accent: '#D21034',
+      day: 21, date: '2026-07-18', country: 'France 🆚 England', flag: '🇫🇷🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+      primary: '#002395', secondary: '#CF081F', accent: '#FFFFFF',
       textColor: '#FFFFFF',
-      slogan: 'The desert blooms.',
-      pattern: 'arabesque',   // Arabesque geometric — North African Islamic art
+      slogan: '3rd Place Playoff · Kickoff 9:00 PM',
+      pattern: 'faceoff',     // Face-off weave — Fleur-de-lis meets St George's Cross
+      specialDay: 'thirdplace',
     },
     {
-      day: 22, date: '2026-07-19', country: 'Final Day', flag: '🏆',
-      primary: '#B8860B', secondary: '#FFD700', accent: '#FFFFFF',
+      day: 22, date: '2026-07-19', country: 'Spain 🆚 Argentina', flag: '🏆🇪🇸🇦🇷',
+      primary: '#AA151B', secondary: '#74ACDF', accent: '#FFD700',
       textColor: '#FFFFFF',
-      slogan: 'One identity to rule them all.',
+      slogan: 'The Final · Kickoff 7:00 PM',
       pattern: 'confetti',
       specialDay: 'final',
     },
@@ -346,6 +347,12 @@
         repeating-radial-gradient(ellipse 60px 15px at 0% 100%, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 30px),
         repeating-radial-gradient(ellipse 60px 15px at 50% 50%, ${c2} 0px, ${c2} 2px, transparent 2px, transparent 30px)`,
 
+      // France vs England — 3rd Place Playoff: crossing diagonals, two identities meeting
+      faceoff: `
+        repeating-linear-gradient(45deg,  ${c1} 0px, ${c1} 3px, transparent 3px, transparent 18px),
+        repeating-linear-gradient(-45deg, ${c2} 0px, ${c2} 3px, transparent 3px, transparent 18px),
+        repeating-linear-gradient(90deg,  ${c3} 0px, ${c3} 1px, transparent 1px, transparent 24px)`,
+
       // Fallback
       diagonal: `repeating-linear-gradient(135deg, ${c1} 0px, ${c1} 2px, transparent 2px, transparent 14px)`,
     };
@@ -461,7 +468,9 @@
     right.style.cssText = `color:${team.secondary};font-weight:600;font-size:10px;`;
     right.textContent = team.specialDay === 'final'
       ? '🏆 Final!'
-      : `${remaining}d left`;
+      : team.specialDay === 'thirdplace'
+        ? '🥉 3rd Place'
+        : `${remaining}d left`;
 
     banner.appendChild(left);
     banner.appendChild(right);

@@ -1,0 +1,257 @@
+/* DualProfile Content Script Styles */
+
+/* Header overlay — appears over native avatar */
+[data-dualprofile-overlay="true"] {
+  transition: opacity 0.15s ease;
+}
+
+/* ===================== NETWORK BADGES ===================== */
+/* NOTE: Badges are appended to contact elements without modifying native styles */
+
+.dualprofile-badge {
+  /* Use inline-block instead of absolute to avoid layout interference */
+  display: none; /* Hidden by default - enable when network detection is ready */
+  margin-left: 4px;
+  font-size: 12px;
+  z-index: 10;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+}
+
+/* Alternative: Fixed position badge (uncomment when ready)
+.dualprofile-badge {
+  position: fixed;
+  pointer-events: auto;
+}
+*/
+
+.dualprofile-badge:hover {
+  transform: scale(1.2);
+}
+
+.dualprofile-badge.has-extension {
+  display: inline-block;
+  color: #00D95F;
+  cursor: default;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+.dualprofile-badge.no-extension {
+  /* Keep hidden until network detection is implemented in v1.1 */
+  display: none;
+  color: #8696a0;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.dualprofile-badge.no-extension:hover {
+  opacity: 1;
+  color: #00D95F;
+}
+
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ===================== INVITE MODAL ===================== */
+
+#dualprofile-invite-modal .invite-content {
+  background: #1f2c34;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  position: relative;
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+#dualprofile-invite-modal .invite-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #8696a0;
+  font-size: 24px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+#dualprofile-invite-modal .invite-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+#dualprofile-invite-modal .invite-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+#dualprofile-invite-modal .invite-icon {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+#dualprofile-invite-modal .invite-header h3 {
+  color: #e9edef;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+#dualprofile-invite-modal .invite-desc {
+  color: #8696a0;
+  text-align: center;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+#dualprofile-invite-modal .invite-link-box {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+#dualprofile-invite-modal .invite-link-box input {
+  flex: 1;
+  background: #111b21;
+  border: 1px solid #2a3942;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e9edef;
+  font-size: 13px;
+  outline: none;
+}
+
+#dualprofile-invite-modal .invite-copy-btn {
+  background: #00D95F;
+  color: #111b21;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#dualprofile-invite-modal .invite-copy-btn:hover {
+  background: #00c854;
+}
+
+#dualprofile-invite-modal .invite-share-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#dualprofile-invite-modal .invite-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+#dualprofile-invite-modal .invite-share:hover {
+  transform: translateY(-2px);
+}
+
+#dualprofile-invite-modal .invite-share.whatsapp {
+  background: #25D366;
+  color: #fff;
+}
+
+#dualprofile-invite-modal .invite-share.whatsapp:hover {
+  background: #20c45c;
+}
+
+/* ===================== HEALTH WARNING ===================== */
+
+#dualprofile-health-warning {
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+#dualprofile-health-warning .health-icon {
+  font-size: 18px;
+}
+
+#dualprofile-health-warning .health-text {
+  flex: 1;
+}
+
+#dualprofile-health-warning button {
+  background: rgba(0,0,0,0.2);
+  border: none;
+  color: #000;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#dualprofile-health-warning button:hover {
+  background: rgba(0,0,0,0.3);
+}
+
+#dualprofile-health-warning .health-retry {
+  background: rgba(255,255,255,0.3);
+}
+
+#dualprofile-health-warning .health-retry:hover {
+  background: rgba(255,255,255,0.4);
+}
+
+
+
+/* ── DualProfile Pre-init Veil ─────────────────────────────────────────────
+   Injected at document_start (before any paint).
+   dp-veil-active is added to <html> synchronously by content.js when
+   p2p photos are cached — hides sidebar avatars until fiber swaps complete.
+   Class is removed per-phone as each swap fires, or after 2s safety timeout.
+   This guarantees zero flash of default WhatsApp photos on hard refresh.
+────────────────────────────────────────────────────────────────────────── */
+html.dp-veil-active #pane-side [role="row"] img:not([data-dualprofile-preinit]) {
+  opacity: 0 !important;
+  transition: none !important;
+}

@@ -1,0 +1,244 @@
+/* ========================================
+   DUALPROFILE DESIGN SYSTEM
+   Matching Onboarding Style (Jan 11-13)
+   ======================================== */
+
+:root {
+  /* ========================================
+     DARK THEME (Default - Matching Onboarding)
+     ======================================== */
+
+  /* Background Colors */
+  --bg-primary: #0B141A;
+  --bg-secondary: #1F2C33;
+  --bg-tertiary: #2A3B43;
+  --bg-hover: #374952;
+
+  /* Text Colors */
+  --text-primary: #E9EDEF;
+  --text-secondary: #8696A0;
+  --text-muted: #667781;
+
+  /* Accent Colors - Bright Green */
+  --accent-primary: #00D95F;
+  --accent-hover: #00B89C;
+  --accent-light: rgba(0, 217, 95, 0.1);
+  --accent-glow: rgba(0, 217, 95, 0.2);
+
+  /* Secondary Color - Teal */
+  --secondary: #00B89C;
+  --secondary-hover: #009E87;
+  --secondary-light: rgba(0, 184, 156, 0.1);
+
+  /* Photo Assignment Colors */
+  --photo1-color: #00A884;
+  --photo2-color: #25D366;
+
+  /* Border Colors */
+  --border-color: #2A3B43;
+  --border-light: rgba(255, 255, 255, 0.05);
+
+  /* Status Colors */
+  --success: #00D95F;
+  --danger: #EA0038;
+  --warning: #F7C948;
+
+  /* Shadows - Dark mode */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(0, 217, 95, 0.15);
+
+  /* ========================================
+     SPACING
+     ======================================== */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-xxl: 24px;
+  --spacing-3xl: 32px;
+
+  /* ========================================
+     BORDER RADIUS
+     ======================================== */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 50%;
+
+  /* ========================================
+     TRANSITIONS
+     ======================================== */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ========================================
+     TYPOGRAPHY
+     ======================================== */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-size-xs: 10px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ========================================
+     GRADIENTS
+     ======================================== */
+  --gradient-primary: linear-gradient(135deg, #00D95F 0%, #00B89C 100%);
+  --gradient-hover: linear-gradient(135deg, #00E676 0%, #00D9B4 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(0, 217, 95, 0.1) 0%, rgba(0, 184, 156, 0.1) 100%);
+
+  /* ========================================
+     Z-INDEX SCALE
+     ======================================== */
+  --z-dropdown: 100;
+  --z-sticky: 500;
+  --z-modal: 1000;
+  --z-overlay: 2000;
+  --z-onboarding: 3000;
+}
+
+/* ========================================
+   LIGHT THEME OVERRIDE
+   ======================================== */
+[data-theme="light"] {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F0F2F5;
+  --bg-tertiary: #E9EDEF;
+  --bg-hover: #D9DBDF;
+
+  --text-primary: #111B21;
+  --text-secondary: #54656F;
+  --text-muted: #8696A0;
+
+  --border-color: #E9EDEF;
+  --border-light: #F0F2F5;
+
+  /* Slightly darker green for light mode */
+  --accent-primary: #00D95F;
+  --accent-hover: #00B89C;
+  --accent-light: rgba(0, 217, 95, 0.1);
+  --accent-glow: rgba(0, 217, 95, 0.2);
+
+  --photo1-color: #00A884;
+  --photo2-color: #25D366;
+
+  /* Shadows - Light mode */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.06), 0 3px 6px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 20px rgba(0, 217, 95, 0.1);
+}
+
+/* ========================================
+   ANIMATIONS (From Onboarding)
+   ======================================== */
+
+/* Masks bounce animation */
+@keyframes masksBounce {
+  0%, 100% { transform: scale(1) rotate(-5deg); }
+  50% { transform: scale(1.1) rotate(5deg); }
+}
+
+/* Sparkle animation */
+@keyframes sparkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.2); }
+}
+
+/* Slide in animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Pulse glow animation */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 5px var(--accent-light);
+  }
+}
+
+/* Spin animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Pop in animation */
+@keyframes popIn {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* Shake animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Gift bounce animation */
+@keyframes giftBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Step fade in animation */
+@keyframes stepFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
