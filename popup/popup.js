@@ -1496,6 +1496,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, type === 'warning' ? 5000 : 3000);
   }
 
+  // Fires on every new (non-toggle-off) contact assignment. This is the one
+  // moment users were falling through: they'd assign a photo and assume the
+  // other person saw it immediately, with nothing telling them DualProfile
+  // is mutual — the other side needs the extension installed too. Reported
+  // directly by users (including a same-day refund) as the reason it looked
+  // "broken" when it wasn't.
+  function showP2PReminderToast(contactName) {
+    const existing = document.getElementById('dp-p2p-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'dp-p2p-toast';
+    toast.style.cssText = `position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(6px);width:280px;background:#161B24;border:1px solid rgba(255,255,255,0.1);color:#E7EAEE;font-size:12px;line-height:1.45;padding:12px 14px;border-radius:10px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.35);opacity:0;transition:opacity .2s, transform .2s;`;
+
+    const msg = document.createElement('div');
+    msg.style.cssText = 'margin-bottom:9px;';
+    msg.textContent = dpTrialT('p2p_reminder_msg', { name: contactName || 'They' });
+    toast.appendChild(msg);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = dpT('copy_link');
+    copyBtn.style.cssText = 'flex:1;background:#33D6C0;color:#0F131A;border:none;border-radius:6px;font-weight:600;font-size:11.5px;padding:7px 10px;cursor:pointer;';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(DUALPROFILE_INSTALL_URL).catch(() => {});
+      copyBtn.textContent = dpT('copied_msg');
+      setTimeout(() => { copyBtn.textContent = dpT('copy_link'); }, 2200);
+    });
+    row.appendChild(copyBtn);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u2715';
+    closeBtn.setAttribute('aria-label', 'Dismiss');
+    closeBtn.style.cssText = 'background:transparent;color:#8A93A3;border:none;font-size:13px;padding:6px 8px;cursor:pointer;';
+    closeBtn.addEventListener('click', () => dismiss());
+    row.appendChild(closeBtn);
+
+    toast.appendChild(row);
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(-50%) translateY(0)'; });
+
+    function dismiss() {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 220);
+    }
+    const autoDismiss = setTimeout(dismiss, 7000);
+    toast.addEventListener('mouseenter', () => clearTimeout(autoDismiss));
+  }
+
   function showPhoneError(message) {
     const statusEl = elements.phoneStatusMessage;
     if (!statusEl) return;
@@ -1861,6 +1912,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const targetSlot = `photo${photoNum}`;
     const currentSlot = resolveContactSlot({ name: contactName, phone: contactPhone });
+    let _didAssignNew = false;
 
     try {
       if (currentSlot === targetSlot) {
@@ -1891,6 +1943,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const _contactKey = resolveContactKey(contactName, contactPhone);
         await DualProfileStorage.assignContact(contactName, photoNum, contactPhone);
         contactMap[_contactKey] = targetSlot;
+        _didAssignNew = true;
 
         // Sync assignment to Convex.
         // Sync assignment to Convex.
@@ -1985,6 +2038,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
+      if (_didAssignNew) {
+        showP2PReminderToast(contactName);
+      }
+
       renderWhatsAppContacts(waContacts);
       updateContactCounts();
       populatePreviewDropdown();
@@ -2031,10 +2088,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Pro activation celebration ──────────────────────────────────────────
   function showProWelcome(tier) {
     const isLifetime = tier === 'lifetime';
-    const title   = isLifetime ? 'Welcome, Lifetime Member.' : 'Welcome to Pro.';
+    const isAnnual = tier === 'annual';
+    const title = isLifetime ? 'Welcome, Lifetime Member.' : isAnnual ? 'Welcome to Annual.' : 'Welcome to Pro.';
     const tagline = isLifetime
       ? 'Different photos for different worlds — yours forever.'
-      : 'Different photos for different worlds — unlimited.';
+      : isAnnual
+        ? 'Bulk assignment and Scheduled Photos, unlocked.'
+        : 'Different photos for different worlds — unlimited.';
+    const badge = isLifetime ? 'LIFETIME' : isAnnual ? 'ANNUAL' : 'PRO';
 
     // ── Confetti burst (pure canvas, no library) ──
     const canvas = document.createElement('canvas');
@@ -2095,7 +2156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="#1A7A4A"/>
           </svg>
         </div>
-        <div class="dpw-badge">\${isLifetime ? 'LIFETIME' : 'PRO'}</div>
+        <div class="dpw-badge">\${badge}</div>
         <h2 class="dpw-title">\${title}</h2>
         <p class="dpw-tagline">\${tagline}</p>
         <button class="dpw-btn" id="dpwDismiss">Let's go</button>
@@ -2681,7 +2742,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (result.success !== false) {
             // Update local state immediately
             isPro = true;
-            currentTier = result.tier === 'lifetime' ? 'lifetime' : 'pro';
+            currentTier = result.tier === 'lifetime' ? 'lifetime' : result.tier === 'annual' ? 'annual' : 'pro';
             updateProUI();
             updateLimitInfo();
             notifyWhatsAppTabs({ type: 'STATE_UPDATED' });

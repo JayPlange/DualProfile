@@ -1,3 +1,43 @@
+## v1.0.22 — 2026-07-16
+- **Critical entitlement bug:** license activation never recognized the
+  Annual tier at all — `handleActivateLicense` / `handleValidateLicense`
+  in service-worker.js only ever computed `isLifetime` (true/false) and
+  set tier to `'lifetime'` or `'pro'`. Anyone activating an Annual license
+  was silently downgraded to plain Pro and lost Bulk Assignment +
+  Scheduled Photos, despite paying for them. `isAnnual` is now detected
+  from the license variant name and set correctly, with proper
+  Lifetime > Annual > Pro precedence throughout.
+- **Second leakage bug:** the invalid-license revocation path only
+  cleared `isPro`, leaving `isLifetime`/`isAnnual` stale — since
+  tier-system.js checks those before `isPro`, a lapsed license kept full
+  access indefinitely. Now clears all three tier flags together, in both
+  the revoke path and the deactivate-license path.
+- **Third instance of the same collapse:** immediately after a
+  successful activation, popup.js re-collapsed the (now-correct)
+  `'annual'` tier result back down to `'pro'` before storing it locally —
+  would have silently undone the service-worker fix. Fixed to preserve
+  all three tiers.
+- Post-purchase welcome screen (`showProWelcome`) was also binary
+  (Lifetime vs generic "Pro") — Annual purchasers got the wrong
+  celebration copy and badge. Now shows tier-correct title/tagline/badge
+  for all three paid tiers.
+- Verified landing-page checkout buttons are correctly wired: Pro ->
+  `b1aa498c`, Annual -> `eedf7e9a`, Lifetime -> `4f5df750` (matches Lemon
+  Squeezy product IDs, no cross-wiring).
+- Confirmed `pages/api/lemon-webhook.ts` and `pages/api/verify-pro.ts` on
+  the landing page are dead/unreferenced stub code (in-memory store,
+  resets every deploy) — the real activation path is entirely
+  client-side, calling Lemon Squeezy's License API directly from the
+  extension. Not used anywhere, safe to ignore or remove later.
+- **P2P activation gap:** added a reminder after every new contact
+  assignment ("{name} will see this once they install DualProfile too"
+  + a one-tap "copy invite link" action) — closes the exact gap reported
+  by real users who assigned a photo and assumed it worked immediately,
+  including the source of at least one refund. Previously the only
+  post-assignment feedback was a Pro-upsell modal when hitting the
+  Free-tier limit; there was no P2P education at the moment it actually
+  mattered. Added across all 9 languages.
+
 ## v1.0.21 — 2026-07-16
 - Onboarding Step 1 rewritten to match the landing page hero's pitch:
   now opens with "You already change how you talk depending on who's

@@ -1449,15 +1449,22 @@ async function handleActivateLicense(message, sendResponse) {
     const result = await swGet('state');
     const state = result.state || getDefaultState();
 
-    // Detect lifetime vs monthly from variant name or variant ID
+    // Detect lifetime vs annual vs monthly from variant name or variant ID
     const variantName = (validateResult.meta?.variantName || '').toLowerCase();
     const isLifetimeLicense = variantName.includes('lifetime') ||
       variantName.includes('one-time') ||
       variantName.includes('once') ||
       String(validateResult.meta?.variantId || '') === String(DualProfileConfig.LEMONSQUEEZY_VARIANT_ID || '');
+    const isAnnualLicense = !isLifetimeLicense && (
+      variantName.includes('annual') ||
+      variantName.includes('yearly') ||
+      variantName.includes('/yr') ||
+      variantName.includes('year')
+    );
 
     state.meta.isPro = true;
     state.meta.isLifetime = isLifetimeLicense;
+    state.meta.isAnnual = isAnnualLicense;
 
     await swSet({
       state,
@@ -1467,7 +1474,8 @@ async function handleActivateLicense(message, sendResponse) {
         activatedAt: Date.now(),
         customerEmail: validateResult.meta?.customerEmail || null,
         status: 'active',
-        isLifetime: isLifetimeLicense
+        isLifetime: isLifetimeLicense,
+        isAnnual: isAnnualLicense
       }
     });
 
@@ -1485,7 +1493,7 @@ async function handleActivateLicense(message, sendResponse) {
       success: true,
       customerEmail: validateResult.meta?.customerEmail,
       productName: validateResult.meta?.productName,
-      tier: isLifetimeLicense ? 'lifetime' : 'pro'
+      tier: isLifetimeLicense ? 'lifetime' : isAnnualLicense ? 'annual' : 'pro'
     });
 
   } catch (error) {
@@ -1509,10 +1517,14 @@ async function handleValidateLicense(sendResponse) {
     const result = await LemonSqueezyClient.validateLicense(license.key);
 
     if (!result.valid) {
-      // License no longer valid - revoke Pro
+      // License no longer valid - revoke all tier flags, not just isPro.
+      // tier-system.js checks isLifetime/isAnnual before isPro, so leaving
+      // those stale would let a lapsed license keep full access forever.
       const stateResult = await swGet('state');
       const state = stateResult.state || getDefaultState();
       state.meta.isPro = false;
+      state.meta.isLifetime = false;
+      state.meta.isAnnual = false;
       await swSet({
         state,
         license: { ...license, status: 'invalid' }
@@ -1522,14 +1534,22 @@ async function handleValidateLicense(sendResponse) {
       return;
     }
 
-    // License is still valid — restore isLifetime flag from stored license
+    // License is still valid — restore isLifetime/isAnnual flags from stored license
     const storedIsLifetime = license?.isLifetime === true;
+    const storedIsAnnual = license?.isAnnual === true;
     // Also re-check from variant name in case it wasn't stored
     const variantNameCheck = (result.meta?.variantName || '').toLowerCase();
     const isLifetimeCheck = storedIsLifetime ||
       variantNameCheck.includes('lifetime') ||
       variantNameCheck.includes('one-time') ||
       variantNameCheck.includes('once');
+    const isAnnualCheck = !isLifetimeCheck && (
+      storedIsAnnual ||
+      variantNameCheck.includes('annual') ||
+      variantNameCheck.includes('yearly') ||
+      variantNameCheck.includes('/yr') ||
+      variantNameCheck.includes('year')
+    );
 
     // Re-confirm state flags are correct
     const stateDataValid = await swGet('state');
@@ -1537,6 +1557,7 @@ async function handleValidateLicense(sendResponse) {
     if (stateValid.meta) {
       stateValid.meta.isPro = true;
       stateValid.meta.isLifetime = isLifetimeCheck;
+      stateValid.meta.isAnnual = isAnnualCheck;
       await swSet({ state: stateValid });
     }
 
@@ -1545,7 +1566,7 @@ async function handleValidateLicense(sendResponse) {
       valid: true,
       customerEmail: result.meta?.customerEmail,
       status: result.meta?.status,
-      tier: isLifetimeCheck ? 'lifetime' : 'pro'
+      tier: isLifetimeCheck ? 'lifetime' : isAnnualCheck ? 'annual' : 'pro'
     });
 
   } catch (error) {
@@ -1591,6 +1612,7 @@ async function handleDeactivateLicense(sendResponse) {
     const state = stateResult.state || getDefaultState();
     state.meta.isPro = false;
     state.meta.isLifetime = false;
+    state.meta.isAnnual = false;
 
     await swSet({
       state,
