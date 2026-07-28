@@ -115,13 +115,20 @@ export const checkUsersExist = query({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getTrialStatus — returns full trial state for a user.
-// Called by the client on popup open to drive UI without an extra assignContact call.
+// getTrialStatus — kept under its original name (client already calls it on
+// popup open) but the time-boxed trial it used to describe is gone.
+//
+// Removed: a 3-day countdown from first assignment that granted temporary
+// unlimited access, then expired regardless of whether the other side of a
+// P2P pair had installed yet — penalizing users for a timeline they didn't
+// control. Free is now a flat, permanent 1-contact limit; nothing here
+// counts down.
+//
 // Returns:
-//   effectiveTier: "trial" | "pro" | "free"
-//   trialStatus:   "not_started" | "active" | "expired"
-//   trialEndsAt:   number | null
-//   msRemaining:   number | null  (negative means expired)
+//   effectiveTier: "pro" | "free"
+//   trialStatus:   always "not_applicable" — no countdown state exists
+//   trialEndsAt:   always null
+//   msRemaining:   always null
 // ─────────────────────────────────────────────────────────────────────────────
 export const getTrialStatus = query({
   args: { userId: v.id("users") },
@@ -129,43 +136,28 @@ export const getTrialStatus = query({
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
 
-    const tier = user.tier;
-    const trialStatus = user.trialStatus ?? "not_started";
-    const trialEndsAt = user.trialEndsAt ?? null;
-    const now = Date.now();
-
-    let effectiveTier: "trial" | "pro" | "free";
-    if (tier === "pro" || tier === "founder") {
-      effectiveTier = "pro";
-    } else if (trialStatus === "active" && trialEndsAt && now <= trialEndsAt) {
-      effectiveTier = "trial";
-    } else {
-      effectiveTier = "free";
-    }
+    const effectiveTier: "pro" | "free" =
+      user.tier === "pro" || user.tier === "founder" ? "pro" : "free";
 
     return {
       effectiveTier,
-      trialStatus,
-      trialEndsAt,
+      trialStatus: "not_applicable" as const,
+      trialEndsAt: null,
       trialActivationEventAt: user.trialActivationEventAt ?? null,
-      msRemaining: trialEndsAt ? trialEndsAt - now : null,
+      msRemaining: null,
     };
   },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// expireTrial — called server-side or from a scheduled job when trial clock runs out.
-// Also called by the client when msRemaining crosses zero to ensure server is in sync.
-// Non-destructive: only updates trialStatus — assignments are never deleted.
+// expireTrial — no-op now that there's no time-boxed trial to expire.
+// Kept as a function (rather than deleted) so any not-yet-updated client
+// build calling this during rollout hits a harmless no-op instead of a
+// missing-function error.
 // ─────────────────────────────────────────────────────────────────────────────
 export const expireTrial = mutation({
   args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId);
-    if (!user) return;
-    if (user.trialStatus !== "active") return; // already expired or not started — no-op
-    if (user.trialEndsAt && Date.now() < user.trialEndsAt) return; // not expired yet — no-op
-
-    await ctx.db.patch(args.userId, { trialStatus: "expired" });
+  handler: async () => {
+    return;
   },
 });

@@ -1974,26 +1974,19 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (_syncSucceeded) {
             console.debug('[DualProfile][POPUP] sync succeeded for:', contactName);
 
-            // Handle trial activation signal from server
+            // First-sync milestone signal from server (field name kept as
+            // `trialJustActivated` server-side for continuity — see
+            // convex/assignments.ts — but it no longer grants a temporary
+            // tier or starts any countdown). Just show the one-time toast;
+            // isPro is driven solely by validateLicenseInBackground() now.
             if (syncResult.trialJustActivated) {
-              // Update local trial state from server response
               trialState = {
-                effectiveTier: 'trial',
-                trialStatus:   'active',
-                trialEndsAt:   syncResult.trialEndsAt,
-                msRemaining:   syncResult.trialEndsAt ? syncResult.trialEndsAt - Date.now() : null,
+                effectiveTier: trialState.effectiveTier,
+                trialStatus:   'not_applicable',
+                trialEndsAt:   null,
+                msRemaining:   null,
               };
-              isPro = true; // trial = full access
-              updateTrialBar();
-              startTrialCountdown();
-              showTrialStartedToast(syncResult.trialEndsAt);
-              // Schedule Day 2 warning + Day 3 expiry push notifications
-              if (syncResult.trialEndsAt) {
-                chrome.runtime.sendMessage({
-                  type: 'SCHEDULE_TRIAL_NOTIFICATIONS',
-                  trialEndsAt: syncResult.trialEndsAt
-                }, () => { /* fire and forget */ });
-              }
+              showTrialStartedToast(null);
             }
 
             // "It's working" upgrade moment: first contact synced on a non-trial free account

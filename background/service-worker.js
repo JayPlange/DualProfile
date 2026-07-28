@@ -1830,20 +1830,15 @@ async function getFirstAssignedContactName() {
   }
 }
 
-async function scheduleTrialNotifications(trialEndsAt) {
+async function scheduleTrialNotifications(_trialEndsAt) {
+  // No-op: the time-boxed trial (and its "ends tomorrow" push notifications)
+  // has been removed. Free tier is now a permanent 1-contact limit with no
+  // countdown, so there is nothing to warn about. This clears any alarms a
+  // still-updating client might have scheduled before this change shipped,
+  // and is kept as a function (rather than deleted) so an older popup build
+  // calling it during rollout hits a harmless no-op instead of an error.
   await chrome.alarms.clear('dp-trial-warn');
   await chrome.alarms.clear('dp-trial-expire');
-  const endsAt = new Date(trialEndsAt).getTime();
-  const warnAt = endsAt - (24 * 60 * 60 * 1000);
-  const now = Date.now();
-  if (warnAt > now) {
-    chrome.alarms.create('dp-trial-warn', { when: warnAt });
-    console.debug('[DualProfile][SW] Scheduled dp-trial-warn at', new Date(warnAt).toISOString());
-  }
-  if (endsAt > now) {
-    chrome.alarms.create('dp-trial-expire', { when: endsAt });
-    console.debug('[DualProfile][SW] Scheduled dp-trial-expire at', new Date(endsAt).toISOString());
-  }
 }
 
 async function fireDay2Notification() {

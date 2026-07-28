@@ -4,33 +4,24 @@ import { v } from "convex/values";
 // ─────────────────────────────────────────────────────────────────────────────
 // getEffectiveTier — single source of truth for what a user can do right now.
 //
-// Returns one of: "trial" | "pro" | "free"
+// Returns one of: "pro" | "free"
 //
-//   "trial"  — active 3-day trial. Unlimited contacts, all features.
-//   "pro"    — paid Pro or Founder. Unlimited contacts, all features.
-//   "free"   — trial not started OR trial expired. Max 1 active contact.
+//   "pro"  — paid Pro, Annual, or Founder/Lifetime. Unlimited contacts.
+//   "free" — everyone else. 1 contact, permanently. No countdown, no expiry.
+//
+// REMOVED (see CHANGELOG): a time-boxed 3-day "trial" tier used to sit between
+// free and pro, unlocking unlimited contacts until a calendar deadline. It's
+// gone — the countdown started on *your* assignment but its value depended on
+// a contact you don't control installing in time, so it punished users for
+// someone else's timeline. It also actively worked against a trust-first
+// audience: a ticking clock reads as a growth-hack pressure tactic to exactly
+// the privacy-conscious users this product needs to convert.
 //
 // Called from assignContact before every write. Pure function — testable.
 // ─────────────────────────────────────────────────────────────────────────────
-function getEffectiveTier(user: {
-  tier: string;
-  trialStatus?: string;
-  trialEndsAt?: number;
-}): "trial" | "pro" | "free" {
-  if (user.tier === "pro" || user.tier === "founder") return "pro";
-
-  const status = user.trialStatus ?? "not_started";
-
-  if (status === "active") {
-    // Expire automatically if clock has run out
-    if (user.trialEndsAt && Date.now() > user.trialEndsAt) return "free";
-    return "trial";
-  }
-
-  return "free"; // "not_started" or "expired"
+function getEffectiveTier(user: { tier: string }): "pro" | "free" {
+  return user.tier === "pro" || user.tier === "founder" ? "pro" : "free";
 }
-
-const TRIAL_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 // Assign a contact to a photo
 export const assignContact = mutation({
@@ -56,27 +47,8 @@ export const assignContact = mutation({
 
     const effectiveTier = getEffectiveTier(user);
 
-    // ── Trial activation ─────────────────────────────────────────────────────
-    // If this is the first successful assignment and trial has not yet started,
-    // activate the trial now. This is the "first verified outcome event" trigger:
-    // the user is about to have a rule saved + synced for the first time.
-    // Clock starts here — server-side — so reinstalling the extension doesn't reset it.
-    if (!user.trialActivationEventAt) {
-      const now = Date.now();
-      await ctx.db.patch(args.userId, {
-        trialStatus: "active",
-        trialActivationEventAt: now,
-        trialStartedAt: now,
-        trialEndsAt: now + TRIAL_DURATION_MS,
-      });
-      // Re-read effective tier — now "trial" (unlimited) for this first assignment
-    }
-    // Re-derive after potential activation patch
-    const userAfterActivation = await ctx.db.get(args.userId);
-    const finalTier = userAfterActivation ? getEffectiveTier(userAfterActivation) : effectiveTier;
-
     // ── Limit enforcement ────────────────────────────────────────────────────
-    if (finalTier === "free") {
+    if (effectiveTier === "free") {
       const assignments = await ctx.db
         .query("assignments")
         .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -87,13 +59,25 @@ export const assignContact = mutation({
         (a) => a.contactPhoneHash === args.contactPhoneHash
       );
 
-      // Free tier (trial expired or not started): max 1 contact.
-      // Throw FREE_TIER_LIMIT so the client can show the correct upgrade modal.
+      // Free tier: max 1 contact, permanently. No countdown — the upgrade
+      // prompt shows on the *second* assignment attempt, not on a timer
+      // ticking down from the first.
       if (!isExisting && assignments.length >= 1) {
         throw new Error("FREE_TIER_LIMIT");
       }
     }
-    // "trial" and "pro" tiers: unlimited — no limit check needed.
+    // Pro tier: unlimited — no limit check needed.
+
+    // ── First-sync milestone (informational only — never gates anything) ────
+    // `trialActivationEventAt` is kept as the field name for schema/data
+    // continuity with existing users, but it no longer starts a countdown.
+    // It just marks "this user's first successful contact sync," which the
+    // client uses to show a one-time congratulatory toast instead of a
+    // "your trial started" one.
+    const isFirstSync = !user.trialActivationEventAt;
+    if (isFirstSync) {
+      await ctx.db.patch(args.userId, { trialActivationEventAt: Date.now() });
+    }
 
     // ── Write ────────────────────────────────────────────────────────────────
     const existing = await ctx.db
@@ -119,12 +103,15 @@ export const assignContact = mutation({
       });
     }
 
-    // Return trial status so the client can show "trial started" UI without
-    // an extra round-trip query
+    // trialJustActivated: kept under its original name so the client's
+    // existing first-sync toast logic doesn't need a coordinated rename —
+    // it now means "first sync ever," not "trial started." trialEndsAt is
+    // always null: there is no more countdown for the client to display or
+    // schedule notifications against.
     return {
-      trialJustActivated: !user.trialActivationEventAt,
-      effectiveTier: finalTier,
-      trialEndsAt: userAfterActivation?.trialEndsAt ?? null,
+      trialJustActivated: isFirstSync,
+      effectiveTier,
+      trialEndsAt: null,
     };
   },
 });
