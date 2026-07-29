@@ -2553,7 +2553,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                      : isExpired ? dpT('trial_upgrade_cta')
                      : null;
 
-    const tierPrice = { pro: '£9.99<span>/month</span>', annual: '£59<span>/year</span>', lifetime: '£79<span>/one-time</span>' };
+    // One paid tier. Legacy keys retained so an un-updated call site that
+    // still passes 'annual' or 'lifetime' shows the correct price, not blank.
+    const proPrice  = '£29<span>/one-time</span>';
+    const tierPrice = { pro: proPrice, annual: proPrice, lifetime: proPrice };
 
     const modal = document.createElement('div');
     modal.className = 'upgrade-modal'

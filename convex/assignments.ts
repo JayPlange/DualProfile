@@ -38,20 +38,13 @@ export const assignContact = mutation({
 
     const effectiveTier = getEffectiveTier(user);
 
-    if (effectiveTier === "free") {
-      const assignments = await ctx.db
-        .query("assignments")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-
-      const isExisting = assignments.some(
-        (a) => a.contactPhoneHash === args.contactPhoneHash
-      );
-
-      if (!isExisting && assignments.length >= 1) {
-        throw new Error("FREE_TIER_LIMIT");
-      }
-    }
+    // The one-contact cap on Free is REMOVED. Per-contact assignment only
+    // works when both people have the extension, so capping free users was
+    // throttling the exact variable the product depends on. Unlimited
+    // contacts is now Free; bulk assignment is the paid convenience.
+    //
+    // If you ever reintroduce a cap, it belongs on this line — server-side,
+    // never in lib/tier-system.js, which the user controls.
 
     const isFirstSync = !user.trialActivationEventAt;
     if (isFirstSync) {
