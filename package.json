@@ -8,5 +8,8 @@
   },
   "devDependencies": {
     "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "convex": "^1.42.3"
   }
 }

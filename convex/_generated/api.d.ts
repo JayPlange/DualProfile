@@ -9,7 +9,10 @@
  */
 
 import type * as assignments from "../assignments.js";
+import type * as auth from "../auth.js";
 import type * as photos from "../photos.js";
+import type * as schedules from "../schedules.js";
+import type * as userPrefs from "../userPrefs.js";
 import type * as users from "../users.js";
 
 import type {
@@ -20,7 +23,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   assignments: typeof assignments;
+  auth: typeof auth;
   photos: typeof photos;
+  schedules: typeof schedules;
+  userPrefs: typeof userPrefs;
   users: typeof users;
 }>;
 

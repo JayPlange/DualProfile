@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "DualProfile",
-  "version": "1.0.25",
-  "description": "Different photos for different people on WhatsApp",
+  "name": "DualProfile — Auto Profile Photo Switcher",
+  "version": "1.0.26",
+  "description": "Automatically switch your WhatsApp Web profile photo by day and time. Work photo 9-6, personal photo evenings.",
   "permissions": [
     "storage",
     "activeTab",

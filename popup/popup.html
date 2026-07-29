@@ -500,39 +500,8 @@
         </div>
       </div>
 
-      <!-- Dev Mode Panel (for testing tiers - triple-click version to show) -->
-      <div class="dev-mode-panel hidden" id="devModePanel">
-        <button class="dev-close-btn" id="devCloseBtn">&times;</button>
-        <h3>Developer Testing</h3>
-        <p class="dev-desc">Test tier features without payment</p>
-
-        <div class="dev-toggle-row">
-          <span>Enable Dev Mode</span>
-          <label class="toggle-switch small">
-            <input type="checkbox" id="devModeToggle">
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="dev-tier-select" id="devTierSelect">
-          <label>
-            <input type="radio" name="devTier" value="free" checked> FREE (2 contacts)
-          </label>
-          <label>
-            <input type="radio" name="devTier" value="pro"> PRO (unlimited)
-          </label>
-        </div>
-
-        <div class="dev-trial-section">
-          <p class="dev-desc" style="margin-top:10px;">Trial Simulation</p>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-            <button class="dev-trial-btn" id="devTrialStart">▶ Start trial (2 min)</button>
-            <button class="dev-trial-btn" id="devTrialWarn">⚠ Warn state (30s left)</button>
-            <button class="dev-trial-btn" id="devTrialExpire">✕ Expire now</button>
-            <button class="dev-trial-btn" id="devTrialReset">↺ Reset trial</button>
-          </div>
-          <p id="devTrialFeedback" style="font-size:11px;color:#aaa;margin-top:6px;"></p>
-        </div>
+      <!-- Dev Mode Panel removed (C1): it shipped in production and unlocked
+           the paid tier from DevTools in one line. -->
       </div>
 
       <!-- Plans & Features Section -->

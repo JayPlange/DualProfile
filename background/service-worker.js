@@ -54,6 +54,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 importScripts('../lib/tier-system.js');
 importScripts('../lib/config.js');
 importScripts('../lib/crypto-utils.js');
+importScripts('../lib/device-auth.js');  // must precede convex-http.js
 importScripts('../lib/convex-http.js');
 importScripts('../lib/cloudinary-client.js');
 importScripts('../lib/sync-manager.js');
@@ -298,7 +299,7 @@ let _syncInitPromise = (async () => {
       try {
         await SyncManager.registerUser(phoneHash);
       } catch (e) {}
-      _startLiveSubscription(phoneHash);
+      await _startLiveSubscription();
     }
 
     // Flush pendingAssignments on every SW startup.
@@ -374,12 +375,18 @@ self._onConvexReconnect = function() {
   }).catch(function() {});
 };
 
-function _startLiveSubscription(viewerPhoneHash) {
+// NOTE: this is the WebSocket path. It builds its own message and does NOT go
+// through ConvexHTTP, so the auth wrappers there do nothing for it — the token
+// has to be attached by hand. Miss this and assignments still save but stop
+// appearing live on the other side.
+async function _startLiveSubscription() {
   let _lastPushedTimestamp = null;
+
+  const deviceToken = await DeviceAuth.token();
 
   ConvexSync.subscribe(
     'assignments:getLastAssignmentTime',
-    { viewerPhoneHash },
+    { deviceToken },
     (newTimestamp, oldTimestamp) => {
 
       if (newTimestamp === null && oldTimestamp !== null) {
@@ -538,7 +545,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let convexOwnerCheck = null;
         try {
           if (SyncManager._myPhoneHash) {
-            convexOwnerCheck = await ConvexHTTP.query('users:getUserByPhone', { phoneHash: SyncManager._myPhoneHash });
+            convexOwnerCheck = await ConvexHTTP.query('users:getMe', {});
           }
         } catch (e) {
           convexOwnerCheck = { error: e.message };
@@ -583,14 +590,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return;
           }
           const ownerPhoneHash = await CryptoUtils.hashPhone(normalized);
-          const ownerRecord = await ConvexHTTP.query('users:getUserByPhone', { phoneHash: ownerPhoneHash });
+          // users:getUserByPhone is gone — it was an unauthenticated lookup on a
+          // hash that is effectively plaintext. getPhotoForViewer resolves the
+          // owner itself, so a non-null result also proves the owner exists.
           let photoUrl = null;
           if (SyncManager._myPhoneHash) {
             photoUrl = await ConvexHTTP.query('assignments:getPhotoForViewer', {
               ownerPhoneHash: ownerPhoneHash,
-              viewerPhoneHash: SyncManager._myPhoneHash,
             });
           }
+          const ownerRecord = photoUrl ? '(exists — photo returned)' : '(unknown — no photo assigned to you, or not a user)';
           sendResponse({
             normalizedOwnerPhone: normalized,
             ownerPhoneHash: ownerPhoneHash,
@@ -616,7 +625,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (phoneHash && DualProfileConfig.isSyncEnabled()) {
           ConvexSync.unsubscribe();
           _liveSubActive = false;
-          _startLiveSubscription(phoneHash);
+          await _startLiveSubscription();
           sendResponse({ success: true });
         } else {
           sendResponse({ success: false, reason: 'no phone hash' });
@@ -847,7 +856,6 @@ async function handleSavePhoto(message, sendResponse) {
         const photoNumber = message.photoId === 'photo1' ? 1 : 2;
         try {
           await ConvexHTTP.mutation('photos:deletePhoto', {
-            userId: SyncManager._convexUserId,
             photoNumber,
           });
           // Also bust the SW image cache so the old base64 isn't served
@@ -1037,7 +1045,7 @@ async function handleGetTrialStatus(sendResponse) {
       return;
     }
 
-    const result = await ConvexHTTP.query('users:getTrialStatus', { userId });
+    const result = await ConvexHTTP.query('users:getTrialStatus', {});
     if (!result) {
       sendResponse({ success: true, trialStatus: 'not_started', effectiveTier: 'free' });
       return;
@@ -1048,7 +1056,7 @@ async function handleGetTrialStatus(sendResponse) {
 
     // If active trial has expired server-side, mark expired locally too
     if (result.effectiveTier === 'free' && result.trialStatus === 'active') {
-      await ConvexHTTP.mutation('users:expireTrial', { userId });
+      await ConvexHTTP.mutation('users:expireTrial', {});
       result.trialStatus = 'expired';
       await swSet({ trialState: result });
     }
@@ -1065,7 +1073,7 @@ async function handleExpireTrial(sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (userId && DualProfileConfig.isSyncEnabled()) {
-      await ConvexHTTP.mutation('users:expireTrial', { userId });
+      await ConvexHTTP.mutation('users:expireTrial', {});
     }
     // Update local cache
     const cached = await swGet('trialState');
@@ -1265,7 +1273,7 @@ async function _syncToConvexInBackground(message) {
   if (photoNumber && SyncManager._convexUserId) {
     try {
       const existingPhotos = await withTimeout(
-        ConvexHTTP.query('photos:getUserPhotos', { userId: SyncManager._convexUserId }),
+        ConvexHTTP.query('photos:getUserPhotos', {}),
         5000
       );
       const photoKey = `photo${photoNumber}`;
@@ -1572,10 +1580,15 @@ async function handleActivateLicense(message, sendResponse) {
     // Also update Convex tier if sync is configured
     if (DualProfileConfig.isSyncEnabled() && SyncManager._convexUserId) {
       try {
-        await ConvexHTTP.mutation('users:registerUser', {
-          extensionId: chrome.runtime.id,
-          phoneHash: SyncManager._myPhoneHash || undefined,
-        });
+        // Was users:registerUser with chrome.runtime.id — see convex/users.ts
+        // for why that was never an identifier. The tier itself is still set
+        // client-side; C5 moves it server-side by validating the Lemon Squeezy
+        // licence inside a Convex action.
+        if (SyncManager._myPhoneHash) {
+          await ConvexHTTP.mutation('users:attachPhone', {
+            phoneHash: SyncManager._myPhoneHash,
+          });
+        }
       } catch (e) {}
     }
 
@@ -1911,7 +1924,7 @@ async function handleGetPhotoHistory(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    const result = await ConvexHTTP.query('photos:getUserPhotos', { userId });
+    const result = await ConvexHTTP.query('photos:getUserPhotos', {});
     sendResponse({ success: true, history1: result.history1 || [], history2: result.history2 || [] });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
@@ -1923,7 +1936,7 @@ async function handleRestoreFromHistory(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    await ConvexHTTP.mutation('photos:restoreFromHistory', { userId, photoId: message.photoId });
+    await ConvexHTTP.mutation('photos:restoreFromHistory', { photoId: message.photoId });
     sendResponse({ success: true });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
@@ -1937,7 +1950,7 @@ async function handleGetSchedule(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    const schedule = await ConvexHTTP.query('schedules:getSchedule', { userId });
+    const schedule = await ConvexHTTP.query('schedules:getSchedule', {});
     // Cache locally for the alarm handler to read without Convex round-trip
     await chrome.storage.local.set({ dp_schedule: schedule });
     sendResponse({ success: true, schedule });
@@ -1953,7 +1966,7 @@ async function handleSaveSchedule(message, sendResponse) {
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
     const { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute } = message;
     await ConvexHTTP.mutation('schedules:saveSchedule', {
-      userId, enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
+      enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
     });
     const schedule = { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute };
     await chrome.storage.local.set({ dp_schedule: schedule });
@@ -1970,7 +1983,7 @@ async function handleDeleteSchedule(message, sendResponse) {
     await _syncInitPromise;
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
-    await ConvexHTTP.mutation('schedules:deleteSchedule', { userId });
+    await ConvexHTTP.mutation('schedules:deleteSchedule', {});
     await chrome.storage.local.remove('dp_schedule');
     await chrome.alarms.clear('dp-schedule-check');
     sendResponse({ success: true });
@@ -2073,13 +2086,12 @@ async function handleSyncPrefs(message, sendResponse) {
     if (message.action === 'push') {
       const stored = await chrome.storage.local.get('dp_lang');
       await ConvexHTTP.mutation('userPrefs:saveUserPrefs', {
-        userId,
         language: stored.dp_lang || 'en',
       });
       sendResponse({ success: true });
     } else {
       // pull
-      const prefs = await ConvexHTTP.query('userPrefs:getUserPrefs', { userId });
+      const prefs = await ConvexHTTP.query('userPrefs:getUserPrefs', {});
       if (prefs?.language) {
         await chrome.storage.local.set({ dp_lang: prefs.language });
       }
