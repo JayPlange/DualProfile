@@ -126,11 +126,72 @@ export const registerDevice = mutation({
 export const attachPhone = mutation({
   args: { ...authArgs, phoneHash: v.string() },
   handler: async (ctx, args) => {
-    const { user } = await requireUserAndTouch(ctx, args.deviceToken);
+    const { user, device } = await requireUserAndTouch(ctx, args.deviceToken);
     if (!/^[0-9a-f]{64}$/.test(args.phoneHash)) {
       throw new Error("INVALID_PHONE_HASH");
     }
     if (user.phoneHash === args.phoneHash) return { userId: user._id };
+
+    // FIX (duplicate-account bug, round 2): a device can register BEFORE its
+    // phone number is known — e.g. a fresh install, or a reset/re-registration
+    // — and only attach the phone number afterward, via this mutation. The
+    // old version of this handler blindly patched the phone hash onto
+    // whichever (fresh, empty) user this device already had. If a REAL
+    // account already existed for that phone hash — holding this person's
+    // actual assignments and photos — that created a second, rival account
+    // sharing the same phone hash. Functionally identical to the bug fixed
+    // in registerDevice earlier, just reached through the opposite call
+    // order (device-first-then-phone instead of phone-known-at-register-time).
+    //
+    // Fix: before attaching, check whether a populated account already
+    // exists for this phone hash. If so, re-point THIS device at that
+    // account instead of creating a rival one — and carry over anything
+    // this fresh user had already accrued (should normally be nothing, but
+    // don't assume it), the same way the one-off merge migration does.
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_phone_hash", (q) => q.eq("phoneHash", args.phoneHash))
+      .first();
+
+    if (existing && existing._id !== user._id) {
+      const [staleAssignments, stalePhotos] = await Promise.all([
+        ctx.db.query("assignments").withIndex("by_user", (q) => q.eq("userId", user._id)).collect(),
+        ctx.db.query("photos").withIndex("by_user", (q) => q.eq("userId", user._id)).collect(),
+      ]);
+
+      for (const a of staleAssignments) {
+        const clash = await ctx.db
+          .query("assignments")
+          .withIndex("by_user_contact", (q) =>
+            q.eq("userId", existing._id).eq("contactPhoneHash", a.contactPhoneHash)
+          )
+          .first();
+        if (clash) {
+          if (a.assignedAt > clash.assignedAt) {
+            await ctx.db.patch(clash._id, {
+              photoNumber: a.photoNumber,
+              contactName: a.contactName,
+              assignedAt: a.assignedAt,
+            });
+          }
+          await ctx.db.delete(a._id);
+        } else {
+          await ctx.db.patch(a._id, { userId: existing._id });
+        }
+      }
+
+      for (const p of stalePhotos) {
+        await ctx.db.patch(p._id, { userId: existing._id, isActive: false, isHistory: true });
+      }
+
+      // Re-point this device at the real account, and drop the now-orphaned
+      // fresh user row it was briefly attached to.
+      await ctx.db.patch(device._id, { userId: existing._id });
+      await ctx.db.delete(user._id);
+
+      return { userId: existing._id };
+    }
+
     await ctx.db.patch(user._id, { phoneHash: args.phoneHash });
     return { userId: user._id };
   },

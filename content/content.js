@@ -4010,8 +4010,28 @@ function extractPhoneFromActiveChat() {
   }
 
   // Strategy 6: Name→phone cache lookup.
-  if (state.currentContact) {
-    const cachedPhone = namePhoneCache[state.currentContact.toLowerCase()];
+  //
+  // FIX (P2P photo not resolving for saved/business contacts): this used to
+  // key ONLY off state.currentContact, which can lag behind what the header
+  // is actually showing right now — e.g. WhatsApp briefly displays a generic
+  // "Business Account" placeholder for business contacts before settling on
+  // their saved name. When that happens, state.currentContact stays stuck on
+  // the placeholder, so this lookup missed even when namePhoneCache already
+  // had the correct name→phone entry (learned earlier from the sidebar scan).
+  // Fix: also try the LIVE header name (getContactNameFromHeader()), which is
+  // what's actually on screen, not just whatever state.currentContact was
+  // last set to.
+  var _s6Names = [];
+  if (state.currentContact) _s6Names.push(state.currentContact);
+  try {
+    var _s6LiveName = getContactNameFromHeader();
+    if (_s6LiveName && _s6LiveName !== '(unknown)' && _s6Names.indexOf(_s6LiveName) === -1) {
+      _s6Names.push(_s6LiveName);
+    }
+  } catch (_) {}
+
+  for (var _s6i = 0; _s6i < _s6Names.length; _s6i++) {
+    const cachedPhone = namePhoneCache[_s6Names[_s6i].toLowerCase()];
     if (cachedPhone) {
       var r6 = succeed(cachedPhone, 6);
       if (r6) return r6;
@@ -6360,6 +6380,18 @@ function waitForWhatsApp() {
     });
     if (myPhoneHash) { p2pState.enabled = true; p2pState.myPhoneHash = myPhoneHash; }
     _startPreInitObserver(phones, dataMap, nameMap);
+    // FIX (stale photo never refreshing): the validation below used to treat
+    // "an assignment still exists" as proof the locally-cached photo was
+    // still correct, and just re-stamped its timestamp as fresh — it never
+    // checked whether the ASSIGNED PHOTO had actually changed. So once a
+    // photo was cached here, reassigning a *different* photo to the same
+    // contact would never show: every page load just re-confirmed "yes,
+    // still assigned" and re-trusted the stale cached copy forever. Fix:
+    // load the Cloudinary URL each cached copy was originally built from
+    // (persisted separately in p2pCloudinaryUrls) and only trust the cache
+    // if the server's current URL for this phone still matches it.
+    chrome.storage.local.get(['p2pCloudinaryUrls'], function(cuData) {
+    var cloudinaryMap = (cuData && cuData.p2pCloudinaryUrls) || {};
     chrome.runtime.sendMessage(
       { type: "GET_REMOTE_PHOTOS_BATCH", ownerPhones: phones },
       function(resp) {
@@ -6381,10 +6413,24 @@ function waitForWhatsApp() {
         var validDataMap = {};
         var evicted = [];
         phones.forEach(function(phone) {
-          if (results[phone]) {
+          var serverValue = results[phone];
+          // serverValue is either the server's current Cloudinary URL, or an
+          // already-upgraded data URL (server-side pre-warm cache hit).
+          // Only trust the cached data URL if we can confirm it was built
+          // from the SAME source the server has on file right now.
+          var isCloudinaryUrl = typeof serverValue === 'string' && serverValue.indexOf('https://res.cloudinary.com/') === 0;
+          var samePhoto = !!serverValue && (isCloudinaryUrl
+            ? (cloudinaryMap[phone] === serverValue)
+            : (serverValue === dataMap[phone]));
+
+          if (samePhoto) {
             validDataMap[phone] = dataMap[phone];
             p2pState.photoCache.set(phone, { url: dataMap[phone], timestamp: Date.now() });
           } else {
+            // Either no assignment at all, or the assigned photo changed —
+            // either way the cached copy can't be trusted. Evict it so the
+            // normal query path (queryRemotePhoto) does a real fetch and
+            // shows what's actually assigned now, instead of the old image.
             p2pState.photoCache.delete(phone);
             p2pState.knownPhones.delete(phone);
             evicted.push(phone);
@@ -6426,6 +6472,7 @@ function waitForWhatsApp() {
         p2pState._convexValidated = true;
       }
     );
+    });
   }
 
   if (_dataMapSync && Object.keys(_dataMapSync).length > 0) {

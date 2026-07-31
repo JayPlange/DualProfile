@@ -10,6 +10,7 @@
 
 import type * as assignments from "../assignments.js";
 import type * as auth from "../auth.js";
+import type * as migrations from "../migrations.js";
 import type * as photos from "../photos.js";
 import type * as schedules from "../schedules.js";
 import type * as userPrefs from "../userPrefs.js";
@@ -24,6 +25,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   assignments: typeof assignments;
   auth: typeof auth;
+  migrations: typeof migrations;
   photos: typeof photos;
   schedules: typeof schedules;
   userPrefs: typeof userPrefs;

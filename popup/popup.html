@@ -198,7 +198,7 @@
         <p class="history-empty hidden" id="historyEmpty" data-i18n="history_empty">No history yet</p>
         <div class="pro-gate hidden" id="historyProGate">
           <span data-i18n="history_pro_gate">Photo history is a Pro feature</span>
-          <button class="btn-upgrade-inline" id="historyUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+          <button class="btn-upgrade-inline" id="historyUpgradeBtn" data-i18n="upgrade_pro_cta">Unlock Pro</button>
         </div>
       </div>
 
@@ -285,8 +285,13 @@
         <button class="btn-pro-action" id="historyBtn" title="View assignment history" data-i18n="history_btn">📋 History</button>
       </div>
 
-      <div class="limit-info" id="limitInfo">
-        <span data-i18n="contacts_used">Free tier:</span> <strong id="contactsUsed">0</strong>/<span id="contactLimit">1</span>
+      <!-- Contact limit meter. Hidden by default and only revealed by
+           updateLimitInfo() if a real cap exists. Free is unlimited, so in
+           practice this never shows. It previously defaulted to visible with a
+           hardcoded "/1", which meant every free user saw "Free tier: 1 / 1
+           Upgrade to Pro" — a cap that had already been removed. -->
+      <div class="limit-info hidden" id="limitInfo">
+        <span data-i18n="contacts_used">Contacts:</span> <strong id="contactsUsed">0</strong>/<span id="contactLimit">∞</span>
         <button class="upgrade-link" id="upgradeFromContacts" data-i18n="contacts_upgrade">Upgrade to Pro</button>
       </div>
     </section>
@@ -423,7 +428,6 @@
       <div class="settings-group pro-section" id="scheduleSection">
         <div class="pro-section-header">
           <h3 data-i18n="schedule_panel_title">Scheduled Photos</h3>
-          <span class="pro-badge">ANNUAL</span>
         </div>
         <div id="scheduleForm">
           <div class="setting-item">
@@ -471,7 +475,7 @@
         </div>
         <div class="pro-gate hidden" id="scheduleProGate">
           <span data-i18n="schedule_pro_gate">Scheduled photos is a Pro feature</span>
-          <button class="btn-upgrade-inline" id="scheduleUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+          <button class="btn-upgrade-inline" id="scheduleUpgradeBtn" data-i18n="upgrade_pro_cta">Unlock Pro</button>
         </div>
       </div>
 
@@ -479,7 +483,7 @@
       <div class="settings-group pro-section" id="exportSection">
         <div class="pro-section-header">
           <h3 data-i18n="pro_export_title">Export &amp; Import Assignments</h3>
-          <span class="pro-badge">LIFETIME</span>
+          <span class="pro-badge">PRO</span>
         </div>
         <div id="exportForm">
           <div class="setting-item">
@@ -496,7 +500,7 @@
         </div>
         <div class="pro-gate hidden" id="exportProGate">
           <span data-i18n="export_pro_gate">Export &amp; import is a Pro feature</span>
-          <button class="btn-upgrade-inline" id="exportUpgradeBtn" data-i18n="upgrade_working_cta">Unlock all contacts</button>
+          <button class="btn-upgrade-inline" id="exportUpgradeBtn" data-i18n="upgrade_pro_cta">Unlock Pro</button>
         </div>
       </div>
 
@@ -517,7 +521,7 @@
               <strong data-i18n="pro_unlimited_title">Unlimited Contacts</strong>
               <span data-i18n="pro_unlimited_desc">Assign to as many contacts as you want</span>
             </div>
-            <span class="pro-feature-tier">PRO</span>
+            <span class="pro-feature-tier pro-feature-tier--free">FREE</span>
           </div>
 
           <div class="pro-feature-item">
@@ -526,7 +530,7 @@
               <strong data-i18n="pro_photohistory_title">Photo History &amp; Revert</strong>
               <span data-i18n="pro_photohistory_desc">Restore any of your last 3 uploaded photos</span>
             </div>
-            <span class="pro-feature-tier">PRO</span>
+            <span class="pro-feature-tier pro-feature-tier--pro">PRO</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x26A1;</span>
@@ -534,7 +538,7 @@
               <strong data-i18n="feat_bulk_title">Bulk Contact Assignment</strong>
               <span data-i18n="bulk_teaser">Select all your work contacts at once. Pro.</span>
             </div>
-            <span class="pro-feature-tier pro-feature-tier--annual">ANNUAL</span>
+            <span class="pro-feature-tier pro-feature-tier--pro">PRO</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F553;</span>
@@ -542,7 +546,7 @@
               <strong data-i18n="pro_schedule_title">Scheduled Photos</strong>
               <span data-i18n="pro_schedule_desc">Auto-switch photos by day and time</span>
             </div>
-            <span class="pro-feature-tier pro-feature-tier--annual">ANNUAL</span>
+            <span class="pro-feature-tier pro-feature-tier--free">FREE</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F4E6;</span>
@@ -550,7 +554,7 @@
               <strong data-i18n="pro_export_title">Export &amp; Import Assignments</strong>
               <span data-i18n="pro_export_desc">Backup and restore all your contact assignments</span>
             </div>
-            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
+            <span class="pro-feature-tier pro-feature-tier--pro">PRO</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x1F4F1;</span>
@@ -558,7 +562,7 @@
               <strong data-i18n="pro_multidevice_title">Multi-Device Sync</strong>
               <span data-i18n="pro_multidevice_desc">Your preferences sync across all your devices</span>
             </div>
-            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
+            <span class="pro-feature-tier pro-feature-tier--pro">PRO</span>
           </div>
           <div class="pro-feature-item">
             <span class="pro-feature-icon">&#x2B50;</span>
@@ -566,7 +570,7 @@
               <strong data-i18n="pro_support_title">Priority Support</strong>
               <span data-i18n="pro_support_desc">Front-of-queue help when you need it</span>
             </div>
-            <span class="pro-feature-tier pro-feature-tier--lifetime">LIFETIME</span>
+            <span class="pro-feature-tier pro-feature-tier--pro">PRO</span>
           </div>
         </div>
 

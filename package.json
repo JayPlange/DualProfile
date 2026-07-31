@@ -1,13 +1,13 @@
 {
   "name": "dualprofile",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "private": true,
   "description": "Chrome extension — show different profile photos to different contacts on WhatsApp Web.",
   "scripts": {
     "test": "jest"
   },
   "devDependencies": {
-    "jest": "^29.7.0"
+    "jest": "^30.4.2"
   },
   "dependencies": {
     "convex": "^1.42.3"

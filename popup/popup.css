@@ -1227,6 +1227,23 @@ body {
   padding: 3px 8px;
 }
 
+/* Two tiers only: FREE (green, "good news, included") and PRO (gold, "the
+   one paid tier"). --annual/--lifetime kept below as deprecated aliases —
+   nothing in HTML references them anymore, but removing them outright risks
+   breaking a cached/reloaded popup mid-transition. Do not use them for
+   anything new. */
+.pro-feature-tier--free {
+  color: var(--accent-primary);
+  background: rgba(37,211,102,0.1);
+  border-color: rgba(37,211,102,0.3);
+}
+
+.pro-feature-tier--pro {
+  color: #f0c040;
+  background: rgba(240,192,64,0.1);
+  border-color: rgba(240,192,64,0.3);
+}
+
 .pro-feature-tier--annual {
   color: var(--accent-primary);
   background: rgba(37,211,102,0.1);

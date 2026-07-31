@@ -849,15 +849,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const limitInfo = $('limitInfo');
     if (!limitInfo) return;
 
+    // Pro has never had a contact cap to show.
     if (currentTier === 'pro') {
       limitInfo.classList.add('hidden');
-    } else {
-      limitInfo.classList.remove('hidden');
-      const tierData = await DualProfileStorage.getUserTier();
-      const limit = tierData.limits?.maxContacts ?? 1;
-      const limitEl = document.getElementById('contactLimit');
-      if (limitEl) limitEl.textContent = limit === Infinity ? '∞' : limit;
+      return;
     }
+
+    const tierData = await DualProfileStorage.getUserTier();
+    const limit = tierData.limits?.maxContacts;
+
+    // Free is now unlimited too, so there is no ratio to display. Showing
+    // "Free tier: 1 / 1  [Upgrade to Pro]" told the user they were capped when
+    // they were not — a false wall on the one screen where they act. Hide the
+    // whole row rather than rendering "1 / ∞", which still reads as a meter.
+    if (TierSystem.isUnlimited(limit)) {
+      limitInfo.classList.add('hidden');
+      return;
+    }
+
+    // Retained for the case where a cap is ever reintroduced.
+    limitInfo.classList.remove('hidden');
+    const limitEl = document.getElementById('contactLimit');
+    if (limitEl) limitEl.textContent = limit;
   }
 
   // ===================== TRIAL STATE FUNCTIONS =====================
@@ -1900,12 +1913,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isAlreadyAssigned = resolveContactSlot({ name: contactName, phone: contactPhone }) !== undefined;
     const currentTotal = countRealContacts(contactMap);
 
-    // Get limit from tier system
+    // Get limit from tier system.
+    // NOTE: this value arrives over chrome.runtime.sendMessage (JSON), so it can
+    // never be Infinity. Unlimited is expressed as null — see tier-system.js.
+    // The old `?? 2` fallback failed closed and capped free users at 2 contacts.
     const tierData = await DualProfileStorage.getUserTier();
-    const limit = tierData.limits?.maxContacts ?? 2;
+    const limit = tierData.limits?.maxContacts;
 
-    // Only check limit if not already assigned AND limit is not Infinity
-    if (!isAlreadyAssigned && limit !== Infinity && currentTotal + 1 > limit) {
+    // Only enforce a cap if one actually exists and this is a new contact.
+    if (!isAlreadyAssigned && !TierSystem.isUnlimited(limit) && currentTotal + 1 > limit) {
       showUpgradeModal();
       return;
     }
@@ -1989,12 +2005,29 @@ document.addEventListener('DOMContentLoaded', async () => {
               showTrialStartedToast(null);
             }
 
-            // "It's working" upgrade moment: first contact synced on a non-trial free account
+            // "It's working" moment: the first time a contact actually syncs.
+            //
+            // This used to be gated on `contacts >= maxContacts`, i.e. it fired
+            // when the user hit the free cap. With the cap gone that test was
+            // both wrong and unbounded: the limit arrived as null, defaulted to
+            // 1, and the modal reappeared after every assignment past the first.
+            //
+            // The moment is worth keeping — first successful cross-user sync is
+            // the point where the product visibly works — but it is a milestone,
+            // not a paywall. Fire it once, ever, on a one-time flag.
             if (!syncResult.trialJustActivated && trialState.effectiveTier === 'free') {
-              const _tierData = await DualProfileStorage.getUserTier();
-              const _limit = _tierData.limits?.maxContacts ?? 1;
-              if (_limit !== Infinity && countRealContacts(contactMap) >= _limit) {
-                setTimeout(() => showUpgradeModal('working'), 1200);
+              try {
+                const _seen = await new Promise(r =>
+                  chrome.storage.local.get('workingMomentShown', r));
+                if (!_seen.workingMomentShown) {
+                  await new Promise(r =>
+                    chrome.storage.local.set({ workingMomentShown: true }, r));
+                  setTimeout(() => showUpgradeModal('working'), 1200);
+                }
+              } catch (e) {
+                // Never let a storage hiccup break assignment — the modal is
+                // decoration, the assignment is the product.
+                console.warn('[DualProfile][POPUP] workingMoment flag failed:', e);
               }
             }
           } else {
@@ -2080,15 +2113,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Pro activation celebration ──────────────────────────────────────────
   function showProWelcome(tier) {
-    const isLifetime = tier === 'lifetime';
-    const isAnnual = tier === 'annual';
-    const title = isLifetime ? 'Welcome, Lifetime Member.' : isAnnual ? 'Welcome to Annual.' : 'Welcome to Pro.';
-    const tagline = isLifetime
-      ? 'Different photos for different worlds — yours forever.'
-      : isAnnual
-        ? 'Bulk assignment and Scheduled Photos, unlocked.'
-        : 'Different photos for different worlds — unlimited.';
-    const badge = isLifetime ? 'LIFETIME' : isAnnual ? 'ANNUAL' : 'PRO';
+    // Was: branched on 'lifetime' | 'annual' | 'pro' with three different
+    // titles/taglines/badges. Round-1 pricing reuses the old Lifetime Lemon
+    // Squeezy variant UUID (see lib/config.js), so `tier` still resolves to
+    // 'lifetime' for every new £29 Pro purchase, not just legacy buyers.
+    // Left as-is, every new customer's purchase-confirmation moment read
+    // "Welcome, Lifetime Member." — a retired product name, on the one screen
+    // a paying customer is guaranteed to see. There is one paid tier now;
+    // `tier` is accepted for backward compatibility but no longer branches.
+    const title = 'Welcome to Pro.';
+    const tagline = 'Different photos for different worlds — unlimited.';
+    const badge = 'PRO';
 
     // ── Confetti burst (pure canvas, no library) ──
     const canvas = document.createElement('canvas');
@@ -2575,40 +2610,35 @@ document.addEventListener('DOMContentLoaded', async () => {
           <li>
             <span class="feature-check">&#x2713;</span>
             <strong>${dpT('pro_unlimited_title')}</strong>
-            <span class="feature-note">${dpT('assign_free_limit')} 1 ${dpT('assign_free_contacts')}</span>
+            <span class="feature-note">${dpT('pro_unlimited_desc')}</span>
           </li>
           <li>
             <span class="feature-check">&#x2713;</span>
-            <strong>${dpT('pro_history_title')}</strong>
-            <span class="feature-note">${dpT('pro_history_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-check">&#x2713;</span>
-            <strong>${dpT('pro_photohistory_title')}</strong>
-            <span class="feature-note">${dpT('pro_photohistory_desc')}</span>
-          </li>
-          <li>
-            <span class="feature-tier-tag">${dpT('tag_annual')}</span>
-            <strong>${dpT('feat_bulk_title')}</strong>
-            <span class="feature-note">${dpT('bulk_teaser')}</span>
-          </li>
-          <li>
-            <span class="feature-tier-tag">${dpT('tag_annual')}</span>
             <strong>${dpT('pro_schedule_title')}</strong>
             <span class="feature-note">${dpT('pro_schedule_desc')}</span>
           </li>
           <li>
-            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
+            <span class="feature-tier-tag">${dpT('tag_pro')}</span>
+            <strong>${dpT('pro_photohistory_title')}</strong>
+            <span class="feature-note">${dpT('pro_photohistory_desc')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag">${dpT('tag_pro')}</span>
+            <strong>${dpT('feat_bulk_title')}</strong>
+            <span class="feature-note">${dpT('bulk_teaser')}</span>
+          </li>
+          <li>
+            <span class="feature-tier-tag">${dpT('tag_pro')}</span>
             <strong>${dpT('pro_export_title')}</strong>
             <span class="feature-note">${dpT('pro_export_desc')}</span>
           </li>
           <li>
-            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
+            <span class="feature-tier-tag">${dpT('tag_pro')}</span>
             <strong>${dpT('pro_multidevice_title')}</strong>
             <span class="feature-note">${dpT('pro_multidevice_desc')}</span>
           </li>
           <li>
-            <span class="feature-tier-tag feature-tier-tag--lifetime">${dpT('tag_lifetime')}</span>
+            <span class="feature-tier-tag">${dpT('tag_pro')}</span>
             <strong>${dpT('pro_support_title')}</strong>
             <span class="feature-note">${dpT('pro_support_desc')}</span>
           </li>
@@ -2616,25 +2646,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         ${paymentEnabled ? `
         <div class="purchase-section">
-          ${(isWorking || isExpired) ? `<button class="btn-buy-pro btn-buy-pro--full" id="buyProBtn"><span>${ctaLabel}</span></button>` : `
           <div class="pricing-row">
-            ${requiredTier === 'lifetime' ? `
-            <button class="btn-buy-pro btn-buy-pro--full" id="buyLifetimeBtn">
-              <span>${dpT('upgrade_lifetime')}</span>
-            </button>` : requiredTier === 'annual' ? `
-            <button class="btn-buy-pro" id="buyAnnualBtn">
-              <span>${dpT('upgrade_annual')}</span>
+            <button class="btn-buy-pro btn-buy-pro--full" id="buyProBtn">
+              <span>${isWorking || isExpired ? ctaLabel : dpT('upgrade_pro')}</span>
             </button>
-            <button class="btn-buy-lifetime" id="buyLifetimeBtn">
-              <span>${dpT('upgrade_lifetime')}</span>
-            </button>` : `
-            <button class="btn-buy-pro" id="buyProBtn">
-              <span>${dpT('upgrade_monthly')}</span>
-            </button>
-            <button class="btn-buy-lifetime" id="buyLifetimeBtn">
-              <span>${dpT('upgrade_lifetime')}</span>
-            </button>`}
-          </div>`}
+          </div>
           <p class="purchase-note">${dpT('upgrade_payment_note')}</p>
 
           <div class="license-section">
@@ -2682,31 +2698,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     if (paymentEnabled) {
-      // Buy button → opens Lemon Squeezy checkout in new tab
+      // Buy button → opens Lemon Squeezy checkout in new tab.
+      // Annual and Lifetime buttons removed: there is one paid tier now, and
+      // showing two or three price options that all silently redirected to
+      // the same £29 checkout (see lib/config.js legacy shims) was actively
+      // misleading, not just stale-looking.
       const buyBtn = modal.querySelector('#buyProBtn');
       if (buyBtn) {
         buyBtn.addEventListener('click', () => {
           chrome.tabs.create({ url: checkoutUrl });
-        });
-      }
-
-      const buyAnnualBtn = modal.querySelector('#buyAnnualBtn');
-      if (buyAnnualBtn) {
-        const annualUrl = typeof DualProfileConfig !== 'undefined'
-          ? (DualProfileConfig.getAnnualCheckoutUrl() || checkoutUrl)
-          : checkoutUrl;
-        buyAnnualBtn.addEventListener('click', () => {
-          if (annualUrl) chrome.tabs.create({ url: annualUrl });
-        });
-      }
-
-      const buyLifetimeBtn = modal.querySelector('#buyLifetimeBtn');
-      if (buyLifetimeBtn) {
-        const lifetimeUrl = typeof DualProfileConfig !== 'undefined'
-          ? (DualProfileConfig.getLifetimeCheckoutUrl() || DualProfileConfig.LIFETIME_CHECKOUT_URL || checkoutUrl)
-          : checkoutUrl;
-        buyLifetimeBtn.addEventListener('click', () => {
-          if (lifetimeUrl) chrome.tabs.create({ url: lifetimeUrl });
         });
       }
 
@@ -2736,9 +2736,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           const result = await DualProfileStorage.activateLicense(key);
 
           if (result.success !== false) {
-            // Update local state immediately
+            // Update local state immediately.
+            // Was: currentTier set to the literal 'lifetime'/'annual' string
+            // from result.tier. That broke every `currentTier === 'pro'` check
+            // elsewhere (e.g. updateLimitInfo at ~853) for exactly the
+            // customer who most needs it to work — right after they pay. One
+            // paid tier now; always resolve to 'pro'.
             isPro = true;
-            currentTier = result.tier === 'lifetime' ? 'lifetime' : result.tier === 'annual' ? 'annual' : 'pro';
+            currentTier = 'pro';
             updateProUI();
             updateLimitInfo();
             notifyWhatsAppTabs({ type: 'STATE_UPDATED' });
@@ -3155,9 +3160,15 @@ function renderHistorySlot(containerId, items, slot) {
 
 // ── Scheduled Photos ──────────────────────────────────────────────────────────
 async function initSchedule(isPro) {
-  // Scheduled Photos — Annual+ feature
+  // Scheduled Photos is FREE — see LIMITS.free.schedule in lib/tier-system.js.
+  //
+  // It was the £59/yr Annual feature and was moved to Free deliberately: it is
+  // the one feature that needs no counterparty install, so it works for 100% of
+  // installers on day one. This call site still passed `isPro`, which meant the
+  // headline free feature was rendering behind a "🔒 Annual" card lock — a tier
+  // that no longer exists — and clicking it opened the upgrade modal.
   hideProGate('scheduleForm', 'scheduleProGate');
-  applyProCardLock('scheduleSection', 'scheduleForm', isPro, 'annual');
+  applyProCardLock('scheduleSection', 'scheduleForm', true, 'pro');
 
   // Load existing schedule
   const resp = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULE' });
@@ -3229,7 +3240,7 @@ function bindScheduleUI(isPro) {
 // ── Export / Import ───────────────────────────────────────────────────────────
 function bindExportImport(isPro) {
   // Export/Import — Lifetime feature
-  applyProCardLock('exportSection', 'exportForm', isPro, 'lifetime');
+  applyProCardLock('exportSection', 'exportForm', isPro, 'pro');
   const exportBtn = document.getElementById('exportBtn');
   const importInput = document.getElementById('importFileInput');
   const exportGateBtn = document.getElementById('exportUpgradeBtn');
@@ -3320,8 +3331,9 @@ function applyProCardLock(sectionId, formId, hasAccess, tierHint) {
       badge.className = 'pro-card-tier-badge';
       wrapper.appendChild(badge);
     }
-    const labels = { pro: '🔒 Pro', annual: '🔒 Annual', lifetime: '🔒 Lifetime' };
-    badge.textContent = labels[tier] || '🔒 Pro';
+    // Annual and Lifetime are retired. Any stored state or stale call site that
+    // still passes them must render as Pro, never as a tier the user cannot buy.
+    badge.textContent = '🔒 Pro';
     badge.style.cssText = 'position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);z-index:5;pointer-events:none;';
     wrapper.style.position = 'relative';
   } else if (badge) {
@@ -3354,9 +3366,9 @@ function applyProCardLock(sectionId, formId, hasAccess, tierHint) {
     if (!hasBulk) {
       // Non-bulk tiers — show upgrade teaser instead
       toggleWrap.classList.remove('hidden');
-      toggleBtn.textContent = '⚡ Bulk select — Annual';
+      toggleBtn.textContent = '⚡ Bulk select — Pro';
       toggleBtn.classList.add('locked-teaser');
-      toggleBtn.onclick = () => showUpgradeModal('standard', 'annual');
+      toggleBtn.onclick = () => showUpgradeModal('standard', 'pro');
       return;
     }
 

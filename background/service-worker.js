@@ -727,14 +727,17 @@ async function handleAssignContact(message, sendResponse) {
     const phoneKeyCount = Object.keys(map).filter(k => /^\d{7,15}$/.test(k)).length;
     const nameOnlyCount = Object.keys(map).filter(k => !/^\d+$/.test(k) && !Object.keys(map).some(pk => /^\d{7,15}$/.test(pk))).length;
     const currentCount = phoneKeyCount + nameOnlyCount;
-    const limit = tierData.limits.maxContacts;
+    const limit = tierData.limits && tierData.limits.maxContacts;
 
     // Primary key: phone if available, name as fallback
     const contactId = message.contactId; // already resolved to phone or name by storage.js
     const isNewContact = !map[contactId];
 
-    // Check limit (skip if already assigned or limit is Infinity)
-    if (isNewContact && limit !== Infinity && currentCount >= limit) {
+    // Check limit (skip if already assigned or the tier has no cap).
+    // Unlimited is null, not Infinity — see lib/tier-system.js. This path
+    // happened to still work because the SW reads TierSystem directly rather
+    // than over sendMessage, but it must not depend on that.
+    if (isNewContact && !TierSystem.isUnlimited(limit) && currentCount >= limit) {
       sendResponse({
         success: false,
         error: 'TIER_LIMIT',
