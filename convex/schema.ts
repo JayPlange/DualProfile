@@ -105,4 +105,19 @@ export default defineSchema({
     claimedAt:   v.number(),
     deviceCount: v.number(),
   }).index("by_user", ["userId"]),
+
+  // ── cloudinaryDeleteFailures ─────────────────────────────────────────────
+  // C4: when a `photos` row is deleted, the underlying Cloudinary asset is
+  // destroyed via a scheduled action (see cloudinaryActions.ts). If all
+  // retries fail, it lands here as a real, queryable row — not just a log
+  // line — because silent failure is the worst outcome for a feature whose
+  // whole purpose is legal/compliance cleanup (an "unretrievable" photo that
+  // is, in fact, still live on Cloudinary).
+  cloudinaryDeleteFailures: defineTable({
+    cloudinaryPublicId: v.string(),
+    error:              v.string(),
+    attempts:           v.number(),
+    firstAttemptAt:     v.number(),
+    lastAttemptAt:       v.number(),
+  }).index("by_public_id", ["cloudinaryPublicId"]),
 });

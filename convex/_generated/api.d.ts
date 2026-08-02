@@ -8,8 +8,14 @@
  * @module
  */
 
+import type * as adminPurgeUser from "../adminPurgeUser.js";
+import type * as adminUserLookup from "../adminUserLookup.js";
 import type * as assignments from "../assignments.js";
 import type * as auth from "../auth.js";
+import type * as cloudinaryActions from "../cloudinaryActions.js";
+import type * as cloudinaryMutations from "../cloudinaryMutations.js";
+import type * as cloudinaryOrphanQueries from "../cloudinaryOrphanQueries.js";
+import type * as cloudinaryOrphanReport from "../cloudinaryOrphanReport.js";
 import type * as migrations from "../migrations.js";
 import type * as photos from "../photos.js";
 import type * as schedules from "../schedules.js";
@@ -23,8 +29,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adminPurgeUser: typeof adminPurgeUser;
+  adminUserLookup: typeof adminUserLookup;
   assignments: typeof assignments;
   auth: typeof auth;
+  cloudinaryActions: typeof cloudinaryActions;
+  cloudinaryMutations: typeof cloudinaryMutations;
+  cloudinaryOrphanQueries: typeof cloudinaryOrphanQueries;
+  cloudinaryOrphanReport: typeof cloudinaryOrphanReport;
   migrations: typeof migrations;
   photos: typeof photos;
   schedules: typeof schedules;

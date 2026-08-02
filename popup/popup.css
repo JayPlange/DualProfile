@@ -424,7 +424,8 @@ body {
   color: var(--text-secondary);
 }
 
-.default-photo select {
+.default-photo select,
+#schedulePhotoNumber {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -436,11 +437,13 @@ body {
   transition: all var(--transition-normal);
 }
 
-.default-photo select:hover {
+.default-photo select:hover,
+#schedulePhotoNumber:hover {
   border-color: var(--accent-primary);
 }
 
-.default-photo select:focus {
+.default-photo select:focus,
+#schedulePhotoNumber:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px var(--accent-light);

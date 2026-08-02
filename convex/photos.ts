@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { authArgs, requireUser, requireUserAndTouch } from "./auth";
 
@@ -47,10 +48,12 @@ export const savePhoto = mutation({
     if (history.length >= MAX_HISTORY) {
       const toDelete = history.slice(0, history.length - MAX_HISTORY + 1);
       for (const old of toDelete) {
-        // C4 GOES HERE. This row is about to disappear while the Cloudinary
-        // asset stays publicly retrievable forever. Call the destroy action
-        // with old.cloudinaryPublicId before deleting the row.
         await ctx.db.delete(old._id);
+        // C4: row is gone from our side; schedule the Cloudinary asset for
+        // destruction so it doesn't stay publicly retrievable forever.
+        await ctx.scheduler.runAfter(0, internal.cloudinaryActions.destroyPhoto, {
+          cloudinaryPublicId: old.cloudinaryPublicId,
+        });
       }
     }
 
@@ -143,9 +146,11 @@ export const deletePhoto = mutation({
       .first();
 
     if (existing) {
-      // C4 GOES HERE TOO — see savePhoto. Until the destroy action exists,
-      // "delete" means "hidden from the app, still on the public internet."
       await ctx.db.delete(existing._id);
+      // C4: see savePhoto — schedule the Cloudinary asset for destruction.
+      await ctx.scheduler.runAfter(0, internal.cloudinaryActions.destroyPhoto, {
+        cloudinaryPublicId: existing.cloudinaryPublicId,
+      });
     }
   },
 });
