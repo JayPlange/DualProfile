@@ -8,6 +8,44 @@ function getEffectiveTier(user: { tier: string }): "pro" | "free" {
   return user.tier === "pro" || user.tier === "founder" ? "pro" : "free";
 }
 
+// Shared by getPhotoForViewer and getPhotosForViewerBatch, the two live P2P
+// read paths (chat header and sidebar respectively — see lib/sync-manager.js
+// getRemotePhoto / getRemotePhotoBatch). Scheduled Photos previously
+// computed the right day/time answer entirely client-side
+// (background/service-worker.js, checkScheduleAndSwitch) and then never
+// reached either of these Convex functions — it wrote to a storage key
+// nothing read, and messaged a content-script handler that didn't exist. It
+// never affected what any viewer actually saw, on any device, ever. This
+// helper is the actual fix: for a viewer with no specific per-contact
+// assignment, compute which slot the owner's schedule says should be
+// showing right now, on the owner's OWN clock (via the stored UTC offset,
+// not the viewer's or the server's). Returns null if there's no schedule or
+// it's disabled — callers must treat null exactly as "no fallback available",
+// same as "no assignment" was treated before this fix existed.
+async function getScheduleFallbackPhotoNumber(
+  ctx: any,
+  ownerUserId: any
+): Promise<number | null> {
+  const schedule = await ctx.db
+    .query("schedules")
+    .withIndex("by_user", (q: any) => q.eq("userId", ownerUserId))
+    .first();
+  if (!schedule || !schedule.enabled) return null;
+
+  const offset = schedule.utcOffsetMinutes ?? 0;
+  const ownerLocal = new Date(Date.now() - offset * 60_000);
+  const dayOfWeek = ownerLocal.getUTCDay();
+  const currentMinutes = ownerLocal.getUTCHours() * 60 + ownerLocal.getUTCMinutes();
+  const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+  const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+  const inWindow =
+    schedule.days.includes(dayOfWeek) &&
+    currentMinutes >= startMinutes &&
+    currentMinutes < endMinutes;
+
+  return inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
+}
+
 // ── assignContact ────────────────────────────────────────────────────────────
 export const assignContact = mutation({
   args: {
@@ -121,12 +159,21 @@ export const getPhotoForViewer = query({
         q.eq("userId", owner._id).eq("contactPhoneHash", viewer.phoneHash!)
       )
       .first();
-    if (!assignment) return null;
+
+    // If there's no specific per-contact assignment, fall back to the
+    // owner's schedule (see getScheduleFallbackPhotoNumber above). If that
+    // also comes back null, behaviour is byte-for-byte unchanged from
+    // before this fix — this is a fallback, never a general
+    // schedule-vs-assignment reconciliation.
+    const targetPhotoNumber = assignment
+      ? assignment.photoNumber
+      : await getScheduleFallbackPhotoNumber(ctx, owner._id);
+    if (targetPhotoNumber === null) return null;
 
     const slotPhotos = await ctx.db
       .query("photos")
       .withIndex("by_user_slot", (q) =>
-        q.eq("userId", owner._id).eq("photoNumber", assignment.photoNumber)
+        q.eq("userId", owner._id).eq("photoNumber", targetPhotoNumber!)
       )
       .collect();
 
@@ -207,6 +254,8 @@ export const getPhotosForViewerBatch = query({
     const userIds = Object.values(hashToUserId);
     if (userIds.length === 0) return results;
 
+    // userId is kept even when there's no assignment (photoNumber: null),
+    // otherwise the schedule fallback below has no owner to look up against.
     const assignments = await Promise.all(
       userIds.map((userId) =>
         ctx.db
@@ -215,7 +264,7 @@ export const getPhotosForViewerBatch = query({
             q.eq("userId", userId).eq("contactPhoneHash", viewerHash)
           )
           .first()
-          .then((a) => (a ? { userId, photoNumber: a.photoNumber } : null))
+          .then((a) => ({ userId, photoNumber: a ? a.photoNumber : null }))
       )
     );
 
@@ -225,11 +274,16 @@ export const getPhotosForViewerBatch = query({
 
     await Promise.all(
       assignments.map(async (a) => {
-        if (!a) return;
+        const photoNumber =
+          a.photoNumber !== null
+            ? a.photoNumber
+            : await getScheduleFallbackPhotoNumber(ctx, a.userId);
+        if (photoNumber === null) return;
+
         const slotPhotos = await ctx.db
           .query("photos")
           .withIndex("by_user_slot", (q) =>
-            q.eq("userId", a.userId).eq("photoNumber", a.photoNumber)
+            q.eq("userId", a.userId).eq("photoNumber", photoNumber)
           )
           .collect();
 

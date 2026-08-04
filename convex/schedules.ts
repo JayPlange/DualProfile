@@ -24,6 +24,7 @@ export const saveSchedule = mutation({
     startMinute: v.number(),
     endHour:     v.number(),
     endMinute:   v.number(),
+    utcOffsetMinutes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUserAndTouch(ctx, args.deviceToken);
@@ -58,6 +59,7 @@ export const saveSchedule = mutation({
       startMinute: args.startMinute,
       endHour:     args.endHour,
       endMinute:   args.endMinute,
+      utcOffsetMinutes: args.utcOffsetMinutes,
       updatedAt:   Date.now(),
     };
 

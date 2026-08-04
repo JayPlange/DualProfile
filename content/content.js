@@ -1981,6 +1981,14 @@ function handleMessage(message, sender, sendResponse) {
           extensionEnabled: state.enabled
         });
         return true;
+      case 'APPLY_SCHEDULED_PHOTO_CHANGE':
+        applyRealProfilePhotoChange(message.photoDataUrl)
+          .then(result => sendResponse(result))
+          .catch(e => sendResponse({ success: false, error: e.message }));
+        return true;
+      case 'SCHEDULE_TOAST_SHOW':
+        showScheduleToast(message.title, message.body, message.switchNowLabel, message.notNowLabel);
+        return false;
       case 'DEBUG_IMAGES':
         const visibleImages = document.querySelectorAll('img, image').length;
         const profilePhotos = document.querySelectorAll('img[src*="whatsapp.net"], img[src*="cdn.whatsapp.net"]').length;
@@ -2259,6 +2267,244 @@ function autoPreviewOnLoad() {
   }
 
   _tryApplyPreview();
+}
+
+// ── showScheduleToast ──────────────────────────────────────────────────────
+// The third layer of tonight's "make sure a person actually notices"
+// problem, after the OS notification (can be silently swallowed by
+// Focus Assist or similar) and the toolbar badge (always visible, but
+// passive, only seen if someone glances at the toolbar). This one draws
+// a small card directly into the WhatsApp Web page itself. Not a
+// notification API at all, so nothing that suppresses notifications has
+// any way to touch it -- the tradeoff is it only reaches WhatsApp Web
+// tabs specifically, this extension has no permission to draw into any
+// other site.
+function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
+  const existing = document.getElementById('dp-schedule-toast');
+  if (existing) existing.remove();
+
+  if (!document.getElementById('dp-schedule-toast-styles')) {
+    const style = document.createElement('style');
+    style.id = 'dp-schedule-toast-styles';
+    style.textContent = `
+      @keyframes dpToastIn {
+        from { transform: translateY(16px); opacity: 0; }
+        to   { transform: translateY(0);    opacity: 1; }
+      }
+      #dp-schedule-toast {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 2147483647;
+        width: 340px;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        animation: dpToastIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        overflow: hidden;
+      }
+      #dp-schedule-toast .dp-toast-body { display: flex; gap: 12px; padding: 16px 16px 12px 16px; }
+      #dp-schedule-toast .dp-toast-icon { width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0; }
+      #dp-schedule-toast .dp-toast-title { font-size: 14px; font-weight: 600; color: #111; margin: 0 0 3px 0; line-height: 1.3; }
+      #dp-schedule-toast .dp-toast-message { font-size: 13px; color: #666; margin: 0; line-height: 1.4; }
+      #dp-schedule-toast .dp-toast-buttons { display: flex; gap: 8px; padding: 0 16px 16px 16px; }
+      #dp-schedule-toast button { flex: 1; border: none; border-radius: 9px; padding: 9px 12px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+      #dp-schedule-toast .dp-toast-switch { background: #00a884; color: #fff; }
+      #dp-schedule-toast .dp-toast-switch:hover { background: #06976f; }
+      #dp-schedule-toast .dp-toast-dismiss { background: #f0f2f5; color: #333; }
+      #dp-schedule-toast .dp-toast-dismiss:hover { background: #e4e6eb; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const toast = document.createElement('div');
+  toast.id = 'dp-schedule-toast';
+  toast.innerHTML = `
+    <div class="dp-toast-body">
+      <img class="dp-toast-icon" src="${chrome.runtime.getURL('icons/icon128.png')}" alt="">
+      <div>
+        <p class="dp-toast-title"></p>
+        <p class="dp-toast-message"></p>
+      </div>
+    </div>
+    <div class="dp-toast-buttons">
+      <button class="dp-toast-dismiss"></button>
+      <button class="dp-toast-switch"></button>
+    </div>
+  `;
+  // Text set via textContent, not templated into the HTML string above --
+  // these strings are translated (9 languages) and this avoids any of
+  // them being treated as markup.
+  toast.querySelector('.dp-toast-title').textContent = title;
+  toast.querySelector('.dp-toast-message').textContent = body;
+  toast.querySelector('.dp-toast-dismiss').textContent = notNowLabel;
+  toast.querySelector('.dp-toast-switch').textContent = switchNowLabel;
+
+  toast.querySelector('.dp-toast-switch').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'switch' });
+    toast.remove();
+  });
+  toast.querySelector('.dp-toast-dismiss').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'not_now' });
+    toast.remove();
+  });
+
+  document.body.appendChild(toast);
+}
+
+// ── applyRealProfilePhotoChange ───────────────────────────────────────────────
+// Built and corrected against real inspected HTML and live diagnostics
+// (2026-08-02), not guessed -- including one correction along the way
+// worth keeping visible rather than editing out of history:
+//
+//   1. The visible dropdown (View/Take/Upload/Remove photo) and the
+//      native OS file dialog it opens can be skipped entirely -- no
+//      content script can drive an OS-level dialog anyway. Talking
+//      directly to the underlying <input type="file"> and dispatching
+//      its change event does the same thing WhatsApp's own "Upload
+//      photo" click does, just without the visual detour.
+//   2. That input is NOT inside the profile-pic-picker container --
+//      an earlier pass assumed it was, based on how one screenshot
+//      looked, and that assumption was wrong. A live diagnostic
+//      (document.querySelectorAll('input[type="file"]'), checking each
+//      one's .closest()) confirmed it renders elsewhere in the page
+//      entirely. It's found here by its accept attribute instead, which
+//      was confirmed specific enough to be the only match at the time
+//      of testing, not by DOM position.
+//   3. data-testid="profile-pic-picker" and data-testid=
+//      "navbar-item-me-tab-photo" are still the right attributes for
+//      navigation. Everything else in that markup (x1c4vz4f, xs83m0k,
+//      etc.) is Meta's auto-generated utility CSS and can change between
+//      builds -- never select on those. Same reasoning ruled out the nav
+//      button's own aria-label="You": English specifically, won't hold
+//      if the account's display language changes.
+//
+// Still open: behaviour, not markup. Every selector here has been
+// confirmed against the live page individually, but the function has
+// not yet completed a full run end to end. Test it that way, watched
+// the whole way through, before it's ever left to fire unattended off
+// the notification flow.
+async function applyRealProfilePhotoChange(photoDataUrl) {
+  try {
+    // Navigate to the profile screen first -- everything below assumes
+    // it's open, and nothing gets there on its own. Check whether it's
+    // already open before clicking anything: clicking the nav button
+    // again might just toggle it, and there's no reason to risk that if
+    // it's already sitting open.
+    let picker = document.querySelector('[data-testid="profile-pic-picker"]');
+
+    if (!picker) {
+      // Deliberately not using the button's aria-label="You" -- that's
+      // the English label specifically and won't match if WhatsApp Web
+      // is set to another display language. The inner div's data-testid
+      // doesn't change with locale.
+      const navPhoto = document.querySelector('[data-testid="navbar-item-me-tab-photo"]');
+      const navButton = navPhoto?.closest('button');
+      if (!navButton) throw new Error('Profile nav button not found -- selectors need updating');
+      navButton.click();
+
+      // Clicking the sidebar avatar opens a "Me" overview panel first,
+      // not the editable photo screen directly -- confirmed by direct
+      // inspection, 2026-08-02. The large photo on that overview panel
+      // is the actual shortcut into the edit screen; WhatsApp labels it
+      // "View photo" even though clicking it is what reveals the
+      // edit/camera UI, going by what was actually observed rather than
+      // the label text. Same locale caveat as aria-label="You" earlier:
+      // this is the English label specifically, worth a locale-
+      // independent replacement if one turns up later.
+      const photoButton = await waitForElement('[role="button"][aria-label="View photo"]', 5000);
+      if (!photoButton) throw new Error('"Me" overview photo button not found -- selectors need updating');
+      photoButton.click();
+
+      picker = await waitForElement('[data-testid="profile-pic-picker"]', 5000);
+      if (!picker) throw new Error('Profile screen did not open, or picker not found -- selectors need updating');
+    }
+
+    // Confirmed via direct diagnostic (2026-08-02), not assumed: this
+    // input is NOT a descendant of the picker container, despite how it
+    // looked in an earlier screenshot. It renders elsewhere in the page
+    // entirely, so it's found by what it is, not where it sits. This
+    // exact accept list is specific enough to trust on its own; the
+    // page's other file input at the time of testing was a generic
+    // any-file, multi-select one (chat attachments), clearly distinct.
+    const fileInput = await waitForElement(
+      'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]',
+      5000
+    );
+    if (!fileInput) throw new Error('Profile picture file input not found -- selectors need updating');
+
+    const file = await dataUrlToFile(photoDataUrl, 'dualprofile-scheduled.jpg');
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    fileInput.files = dataTransfer.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // DELIBERATELY NOT CLICKING THE CONFIRM BUTTON. Tested extensively,
+    // 2026-08-02: a scripted .click() on this specific button reported
+    // success (the call completes without error) but the crop screen
+    // never actually closed and nothing was saved. Every test that
+    // genuinely saved correctly, across three clean runs with three
+    // different photos, had a real human tap this button, not a script.
+    // That's a narrow, consistent difference, not a guess: it looks like
+    // this exact action, the one that actually writes to the account, is
+    // built to expect a real tap specifically, and reasonably so, given
+    // what it does. This function's job ends at getting the right photo
+    // ready on screen. The last tap is the person's, on purpose, not an
+    // unsolved gap.
+    const confirmButton = await waitForElement('button[aria-label="Submit image"]', 8000);
+    if (!confirmButton) {
+      throw new Error('Crop screen did not appear within 8s -- selectors need updating, or the file was rejected');
+    }
+
+    return { success: true, readyForConfirmation: true };
+  } catch (e) {
+    Logger.error('[SCHEDULE] Real profile photo change failed:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+// Debug-only hook so this one function can be called manually from the
+// console while testing (everything else in this file is deliberately
+// private, see the top-level IIFE this whole script runs inside). Safe
+// to leave in permanently -- it does nothing unless someone explicitly
+// calls window.__dpTestApplyScheduledPhoto(...) themselves.
+window.__dpTestApplyScheduledPhoto = applyRealProfilePhotoChange;
+
+// Small, generic helpers used by applyRealProfilePhotoChange above.
+// Not tied to the schedule feature specifically, kept next to it since
+// it's the only current caller.
+
+function waitForElement(selector, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const existing = document.querySelector(selector);
+    if (existing) { resolve(existing); return; }
+
+    let resolved = false;
+    const observer = new MutationObserver(() => {
+      if (resolved) return;
+      const el = document.querySelector(selector);
+      if (el) {
+        resolved = true;
+        observer.disconnect();
+        resolve(el);
+      }
+    });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      observer.disconnect();
+      resolve(null);
+    }, timeoutMs);
+  });
+}
+
+async function dataUrlToFile(dataUrl, filename) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return new File([blob], filename, { type: blob.type || 'image/jpeg' });
 }
 
 async function activatePreviewMode(contactName, photoData) {

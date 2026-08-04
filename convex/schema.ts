@@ -83,6 +83,15 @@ export default defineSchema({
     startMinute: v.number(),
     endHour:     v.number(),
     endMinute:   v.number(),
+    // Minutes to ADD to local time to reach UTC, i.e. JS's own
+    // Date.getTimezoneOffset() convention (UK winter = 0, US Eastern = 300).
+    // Captured once when the schedule is saved. Optional so existing rows
+    // (saved before this field existed) don't fail Convex's schema check on
+    // deploy — same reasoning as deviceToken in the users table above.
+    // Not DST-aware: a schedule saved before a clock change can drift by an
+    // hour until the user re-saves it. Acceptable for a day/time toggle,
+    // not acceptable to silently assume for anything billing-related.
+    utcOffsetMinutes: v.optional(v.number()),
     updatedAt:   v.number(),
   }).index("by_user", ["userId"]),
 

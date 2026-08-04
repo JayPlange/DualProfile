@@ -50,6 +50,25 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// Restore the schedule-check alarm on every startup of this script, not
+// just when a schedule is actively saved through the popup. Found
+// 2026-08-04: reloading the extension (edge://extensions, or a real
+// update) wipes out any alarms Chrome was tracking, but the schedule
+// itself, stored separately in chrome.storage.local, survives fine. With
+// nothing to rebuild the alarm afterward, a person's schedule could sit
+// there saved and enabled indefinitely while silently never actually
+// firing again, with no error, nothing to notice. This runs unconditionally
+// at the top of the script specifically because that covers every case
+// that can make this script start fresh, a real browser restart, the
+// service worker waking from idle, or a manual/automatic extension
+// reload, not just the one case (onInstalled) that was already handled.
+chrome.storage.local.get('dp_schedule', (result) => {
+  if (result.dp_schedule && result.dp_schedule.enabled) {
+    reschedulePhotoAlarms(result.dp_schedule);
+    console.debug('[DualProfile][SW] Restored dp-schedule-check alarm on startup');
+  }
+});
+
 // Import libraries
 importScripts('../lib/tier-system.js');
 importScripts('../lib/config.js');
@@ -429,6 +448,14 @@ async function _startLiveSubscription() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.type) {
+    case 'SCHEDULE_TOAST_DECISION':
+      handleScheduleDecision(message.decision);
+      return false;
+
+    case 'SCHEDULE_BADGE_ACKNOWLEDGED':
+      chrome.action.setBadgeText({ text: '' });
+      return false;
+
     case 'ASSIGN_CONTACT':
       handleAssignContact(message, sendResponse);
       return true;
@@ -1749,6 +1776,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'Your trial ends tomorrow. Keep it that way.',
     notif_day3_title: 'Your DualProfile trial has ended.',
     notif_day3_body: 'Your contacts are now on the free plan. Upgrade to restore full access.',
+    notif_schedule_switch_title: 'Time to switch your WhatsApp photo',
+    notif_schedule_switch_body: "Your schedule says it's time for Photo {slot}. Tap to switch now.",
+    notif_schedule_switch_button_now: 'Switch now',
+    notif_schedule_switch_button_later: 'Not now',
+    notif_schedule_confirm_body: 'Your new photo is ready in WhatsApp — tap the green checkmark to finish.',
   },
   es: {
     notif_day2_title: '{name} está esperando la foto correcta.',
@@ -1757,6 +1789,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'Tu prueba termina mañana. Mantenlo así.',
     notif_day3_title: 'Tu prueba de DualProfile ha terminado.',
     notif_day3_body: 'Tus contactos están ahora en el plan gratuito. Actualiza para restaurar el acceso completo.',
+    notif_schedule_switch_title: 'Hora de cambiar tu foto de WhatsApp',
+    notif_schedule_switch_body: 'Tu horario indica que es momento de la Foto {slot}. Toca para cambiar ahora.',
+    notif_schedule_switch_button_now: 'Cambiar ahora',
+    notif_schedule_switch_button_later: 'Ahora no',
+    notif_schedule_confirm_body: 'Tu nueva foto está lista en WhatsApp — toca la marca verde para terminar.',
   },
   fr: {
     notif_day2_title: '{name} attend la bonne photo.',
@@ -1765,6 +1802,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: "Votre essai se termine demain. Gardez-le ainsi.",
     notif_day3_title: 'Votre essai DualProfile est terminé.',
     notif_day3_body: 'Vos contacts sont maintenant sur le plan gratuit. Passez à Pro pour restaurer l\'accès complet.',
+    notif_schedule_switch_title: 'Il est temps de changer votre photo WhatsApp',
+    notif_schedule_switch_body: "Votre horaire indique que c'est le moment de la Photo {slot}. Appuyez pour changer maintenant.",
+    notif_schedule_switch_button_now: 'Changer maintenant',
+    notif_schedule_switch_button_later: 'Pas maintenant',
+    notif_schedule_confirm_body: 'Votre nouvelle photo est prête dans WhatsApp — appuyez sur la coche verte pour terminer.',
   },
   pt: {
     notif_day2_title: '{name} está esperando a foto certa.',
@@ -1773,6 +1815,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'O seu teste termina amanhã. Mantenha assim.',
     notif_day3_title: 'Seu teste do DualProfile terminou.',
     notif_day3_body: 'Seus contatos estão agora no plano gratuito. Atualize para restaurar o acesso completo.',
+    notif_schedule_switch_title: 'Hora de trocar a sua foto do WhatsApp',
+    notif_schedule_switch_body: 'O seu horário indica que é hora da Foto {slot}. Toque para trocar agora.',
+    notif_schedule_switch_button_now: 'Trocar agora',
+    notif_schedule_switch_button_later: 'Agora não',
+    notif_schedule_confirm_body: 'Sua nova foto está pronta no WhatsApp — toque na marca verde para finalizar.',
   },
   de: {
     notif_day2_title: '{name} wartet auf das richtige Foto.',
@@ -1781,6 +1828,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'Ihre Testphase endet morgen. Behalten Sie es so.',
     notif_day3_title: 'Deine DualProfile-Testphase ist beendet.',
     notif_day3_body: 'Deine Kontakte sind jetzt im kostenlosen Plan. Upgrade für vollen Zugriff.',
+    notif_schedule_switch_title: 'Zeit, dein WhatsApp-Foto zu wechseln',
+    notif_schedule_switch_body: 'Laut deinem Zeitplan ist es Zeit für Foto {slot}. Tippen, um jetzt zu wechseln.',
+    notif_schedule_switch_button_now: 'Jetzt wechseln',
+    notif_schedule_switch_button_later: 'Nicht jetzt',
+    notif_schedule_confirm_body: 'Dein neues Foto ist in WhatsApp bereit — tippe auf das grüne Häkchen, um fertigzustellen.',
   },
   hi: {
     notif_day2_title: '{name} सही फोटो का इंतजार कर रहे हैं।',
@@ -1789,6 +1841,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'आपका ट्रायल कल समाप्त होता है। इसे ऐसे ही रखें।',
     notif_day3_title: 'आपका DualProfile ट्रायल समाप्त हो गया।',
     notif_day3_body: 'आपके संपर्क अब मुफ्त योजना पर हैं। पूर्ण एक्सेस के लिए अपग्रेड करें।',
+    notif_schedule_switch_title: 'अपनी WhatsApp फोटो बदलने का समय',
+    notif_schedule_switch_body: 'आपके शेड्यूल के अनुसार अब फोटो {slot} का समय है। अभी बदलने के लिए टैप करें।',
+    notif_schedule_switch_button_now: 'अभी बदलें',
+    notif_schedule_switch_button_later: 'अभी नहीं',
+    notif_schedule_confirm_body: 'आपकी नई फोटो WhatsApp में तैयार है — पूरा करने के लिए हरे चेकमार्क पर टैप करें।',
   },
   ar: {
     notif_day2_title: '{name} ينتظر الصورة الصحيحة.',
@@ -1797,6 +1854,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'تنتهي تجربتك غداً. احتفظ بها هكذا.',
     notif_day3_title: 'انتهت فترة تجربة DualProfile.',
     notif_day3_body: 'جهات اتصالك الآن على الخطة المجانية. قم بالترقية لاستعادة الوصول الكامل.',
+    notif_schedule_switch_title: 'حان وقت تغيير صورة واتساب الخاصة بك',
+    notif_schedule_switch_body: 'يشير جدولك إلى أنه حان وقت الصورة {slot}. اضغط للتبديل الآن.',
+    notif_schedule_switch_button_now: 'التبديل الآن',
+    notif_schedule_switch_button_later: 'ليس الآن',
+    notif_schedule_confirm_body: 'صورتك الجديدة جاهزة في واتساب — اضغط على العلامة الخضراء للإنهاء.',
   },
   zh: {
     notif_day2_title: '{name} 正在等待正确的照片。',
@@ -1805,6 +1867,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: '您的试用明天结束。保持这样吧。',
     notif_day3_title: '您的 DualProfile 试用已结束。',
     notif_day3_body: '您的联系人现在处于免费计划。升级以恢复完整访问权限。',
+    notif_schedule_switch_title: '该切换您的WhatsApp照片了',
+    notif_schedule_switch_body: '您的日程显示现在该使用照片{slot}了。点击立即切换。',
+    notif_schedule_switch_button_now: '立即切换',
+    notif_schedule_switch_button_later: '暂不',
+    notif_schedule_confirm_body: '您的新照片已在WhatsApp中准备就绪——点击绿色对勾完成。',
   },
   sw: {
     notif_day2_title: '{name} anasubiri picha sahihi.',
@@ -1813,6 +1880,11 @@ const NOTIF_I18N = {
     notif_day2_body_fallback: 'Majaribio yako yanaisha kesho. Yabakishe hivyo.',
     notif_day3_title: 'Majaribio yako ya DualProfile yameisha.',
     notif_day3_body: 'Anwani zako sasa ziko kwenye mpango wa bure. Boresha ili kurejesha ufikiaji wote.',
+    notif_schedule_switch_title: 'Ni wakati wa kubadilisha picha yako ya WhatsApp',
+    notif_schedule_switch_body: 'Ratiba yako inaonyesha ni wakati wa Picha {slot}. Gusa ili kubadilisha sasa.',
+    notif_schedule_switch_button_now: 'Badilisha sasa',
+    notif_schedule_switch_button_later: 'Sio sasa',
+    notif_schedule_confirm_body: 'Picha yako mpya iko tayari katika WhatsApp — gusa alama ya kijani kukamilisha.',
   },
 };
 
@@ -1969,10 +2041,15 @@ async function handleSaveSchedule(message, sendResponse) {
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
     const { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute } = message;
     await ConvexHTTP.mutation('schedules:saveSchedule', {
-      enabled, photoNumber, days, startHour, startMinute, endHour, endMinute
+      enabled, photoNumber, days, startHour, startMinute, endHour, endMinute,
+      utcOffsetMinutes: new Date().getTimezoneOffset()
     });
     const schedule = { enabled, photoNumber, days, startHour, startMinute, endHour, endMinute };
     await chrome.storage.local.set({ dp_schedule: schedule });
+    // Any notified/applied bookkeeping from before this edit no longer
+    // means anything -- the window or target slot may have just changed.
+    await chrome.storage.local.remove('dp_schedule_state');
+    chrome.action.setBadgeText({ text: '' });
     // Reschedule alarms with updated schedule
     await reschedulePhotoAlarms(schedule);
     sendResponse({ success: true });
@@ -1987,18 +2064,41 @@ async function handleDeleteSchedule(message, sendResponse) {
     const userId = SyncManager._convexUserId;
     if (!userId) { sendResponse({ success: false, error: 'Not registered' }); return; }
     await ConvexHTTP.mutation('schedules:deleteSchedule', {});
-    await chrome.storage.local.remove('dp_schedule');
+    await chrome.storage.local.remove(['dp_schedule', 'dp_schedule_state']);
     await chrome.alarms.clear('dp-schedule-check');
+    chrome.notifications.clear('dp-notif-schedule-switch');
+    chrome.action.setBadgeText({ text: '' });
     sendResponse({ success: true });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
   }
 }
 
-// ── Schedule alarm: check every minute if we need to switch photos ────────────
+// ── Schedule alarm: check every minute whether it's time to ask ──────────────
+//
+// This used to try to switch the photo silently, on a timer, with no one
+// there. That's exactly the pattern that gets an account flagged as
+// automated -- an unattended process making the same kind of account
+// change, repeatedly, forever. It also never actually worked (see the
+// dead activePhotoSlot / SCHEDULE_PHOTO_SWITCH code this replaced).
+//
+// This version still computes the right answer every minute -- that part
+// was always correct -- but it only ever *asks*. The actual photo change
+// happens in applyScheduledPhoto(), and only runs after a person taps
+// "Switch now" on the notification this fires. A human approving a
+// suggested action, once, is a fundamentally different thing from a
+// background process acting on its own.
+//
+// dp_schedule_state tracks two slot numbers, not one:
+//   notifiedSlot — the slot we've already asked about, so the same
+//                  boundary doesn't re-notify every single minute while
+//                  waiting for a response.
+//   appliedSlot  — the slot that was actually confirmed and applied last
+//                  time. Once the real photo matches this, there's
+//                  nothing to do until the schedule crosses a new boundary.
 async function checkScheduleAndSwitch() {
   try {
-    const stored = await chrome.storage.local.get('dp_schedule');
+    const stored = await chrome.storage.local.get(['dp_schedule', 'dp_schedule_state']);
     const schedule = stored.dp_schedule;
     if (!schedule || !schedule.enabled) return;
 
@@ -2010,30 +2110,176 @@ async function checkScheduleAndSwitch() {
     const inWindow = schedule.days.includes(dayOfWeek) && currentMinutes >= startMinutes && currentMinutes < endMinutes;
     const targetPhoto = inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
 
-    // Read current active photo slot from state
-    const stateResult = await swGet('state');
-    const currentActive = stateResult?.state?.meta?.activePhotoSlot || 1;
-    if (currentActive === targetPhoto) return; // already correct — no switch needed
+    const scheduleState = stored.dp_schedule_state || {};
+    if (scheduleState.appliedSlot === targetPhoto) return;   // already switched, nothing to do
+    if (scheduleState.notifiedSlot === targetPhoto) return;  // already asked, waiting on the person
 
-    // Switch active slot in local state
-    const state = stateResult.state || getDefaultState();
-    if (!state.meta) state.meta = {};
-    state.meta.activePhotoSlot = targetPhoto;
-    await swSet({ state });
+    await chrome.storage.local.set({
+      dp_schedule_state: { ...scheduleState, notifiedSlot: targetPhoto },
+    });
 
-    // Notify content script to update header photo
-    const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'SCHEDULE_PHOTO_SWITCH',
-        activePhotoSlot: targetPhoto
-      }).catch(() => {});
+    const title = await getNotifString('notif_schedule_switch_title');
+    const body = await getNotifString('notif_schedule_switch_body', { slot: targetPhoto });
+    const switchNowLabel = await getNotifString('notif_schedule_switch_button_now');
+    const notNowLabel = await getNotifString('notif_schedule_switch_button_later');
+
+    // Always visible regardless of which path below fires, and not a
+    // notification, so nothing that suppresses one (Focus Assist,
+    // Windows/Edge notification settings, anything) touches it either.
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#e53935' });
+
+    // Found 2026-08-04: firing both the OS notification and the in-page
+    // toast together meant the OS one visually sat on top of the toast,
+    // and closing it was the only way to see the toast underneath --
+    // redundant and actively in the way, not two useful signals. The
+    // toast is the more reliable of the two (nothing can silently
+    // suppress it the way Focus Assist did to the notification earlier
+    // tonight), so it's the primary path whenever there's a WhatsApp tab
+    // to put it in. The OS notification now only fires as a fallback,
+    // for the one case the toast genuinely can't cover: no WhatsApp tab
+    // open anywhere for it to appear in.
+    const waTabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+
+    if (waTabs.length > 0) {
+      for (const tab of waTabs) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'SCHEDULE_TOAST_SHOW',
+          title,
+          body,
+          switchNowLabel,
+          notNowLabel,
+        }).catch(() => {});
+      }
+    } else {
+      chrome.notifications.create('dp-notif-schedule-switch', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title,
+        message: body,
+        priority: 1,
+        buttons: [{ title: switchNowLabel }, { title: notNowLabel }],
+      });
     }
-    console.debug(`[DualProfile][SW] Schedule switch → Photo ${targetPhoto}`);
-  } catch(e) {
+
+    console.debug(`[DualProfile][SW] Asked to switch → Photo ${targetPhoto}`);
+  } catch (e) {
     console.warn('[DualProfile][SW] Schedule check failed:', e.message);
   }
 }
+
+// Drives the actual photo change, only ever called after a person taps
+// "Switch now". Finds an open WhatsApp Web tab, or opens one (visibly --
+// no hidden background tabs) and waits for it to be ready, then hands off
+// to the content script's applyRealProfilePhotoChange(), which is the
+// piece that still needs the real DOM selectors from a live inspection
+// before it can do anything (see content.js).
+async function applyScheduledPhoto(targetSlot) {
+  const stateResult = await swGet('state');
+  const photoDataUrl = stateResult?.state?.photos?.[`photo${targetSlot}`];
+  if (!photoDataUrl) {
+    console.warn('[DualProfile][SW] No photo uploaded for slot', targetSlot, '-- nothing to apply');
+    return { success: false, error: 'NO_PHOTO_FOR_SLOT' };
+  }
+
+  let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+
+  if (!tab) {
+    tab = await chrome.tabs.create({ url: 'https://web.whatsapp.com/', active: true });
+    await new Promise((resolve) => {
+      const listener = (tabId, info) => {
+        if (tabId === tab.id && info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    // WhatsApp Web's own init (QR/session restore, then the app itself)
+    // takes a few seconds after "complete" fires. Content script readiness
+    // isn't signalled back to us here, so this is a fixed wait, not a
+    // real handshake -- worth replacing with a proper ready-ping once
+    // the DOM side of this exists and we know what "ready" looks like.
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  } else {
+    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: 'APPLY_SCHEDULED_PHOTO_CHANGE',
+      photoDataUrl,
+    });
+    return response || { success: false, error: 'NO_RESPONSE' };
+  } catch (e) {
+    console.warn('[DualProfile][SW] Content script not reachable for photo change:', e.message);
+    return { success: false, error: 'CONTENT_SCRIPT_UNREACHABLE' };
+  }
+}
+
+// Shared by both the OS notification's buttons and the in-page toast's
+// buttons below -- one place this logic lives, not two copies that could
+// quietly drift apart from each other over time.
+async function handleScheduleDecision(decision) {
+  const stored = await chrome.storage.local.get('dp_schedule_state');
+  const targetSlot = stored.dp_schedule_state?.notifiedSlot;
+  if (!targetSlot) return;
+
+  if (decision === 'switch') {
+    const result = await applyScheduledPhoto(targetSlot);
+    if (result.success) {
+      // "Applied" here means the photo is staged and WhatsApp's own crop
+      // screen is open and waiting, not that the account's photo has
+      // actually changed yet -- that last tap is deliberately left to the
+      // person (see the comment in applyRealProfilePhotoChange, content.js,
+      // for why). Still marking this boundary as done rather than
+      // re-notifying: re-asking every minute while they're already
+      // looking at the crop screen would be worse than trusting them to
+      // finish what they just started.
+      await chrome.storage.local.set({
+        dp_schedule_state: { appliedSlot: targetSlot, notifiedSlot: null },
+      });
+      console.debug('[DualProfile][SW] Scheduled photo staged, awaiting manual confirm — slot', targetSlot);
+
+      // Amber, not cleared: the badge's job wasn't "notice the ask", it
+      // was "notice something's unfinished". Staging the photo doesn't
+      // finish it, only a real tap on WhatsApp's own checkmark does, and
+      // there's no way to observe that tap from here to know it happened.
+      // Better to leave a visible reminder than clear it on a guess.
+      chrome.action.setBadgeText({ text: '!' });
+      chrome.action.setBadgeBackgroundColor({ color: '#f9a825' });
+
+      if (result.readyForConfirmation) {
+        chrome.notifications.create('dp-notif-schedule-confirm', {
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+          title: await getNotifString('notif_schedule_switch_title'),
+          message: await getNotifString('notif_schedule_confirm_body'),
+          priority: 1,
+        });
+      }
+    } else {
+      // Leave notifiedSlot as-is deliberately: don't re-notify every
+      // minute for a boundary that just failed, but don't claim success
+      // either. It'll show up again if the schedule crosses to a new
+      // boundary, or the person can open the popup and switch manually.
+      console.warn('[DualProfile][SW] Scheduled photo failed to stage:', result.error);
+    }
+  } else {
+    // "not_now" -- a real decision, not a failure to notice. notifiedSlot
+    // stays set so this boundary won't ask again, and the badge clears
+    // since there's nothing left pending to remind about until the
+    // schedule crosses its next boundary.
+    chrome.action.setBadgeText({ text: '' });
+  }
+}
+
+chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+  if (notificationId !== 'dp-notif-schedule-switch') return;
+  chrome.notifications.clear(notificationId);
+  await handleScheduleDecision(buttonIndex === 0 ? 'switch' : 'not_now');
+});
 
 async function reschedulePhotoAlarms(schedule) {
   await chrome.alarms.clear('dp-schedule-check');

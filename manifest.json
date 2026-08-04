@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DualProfile — Auto Profile Photo Switcher",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "Automatically switch your WhatsApp Web profile photo by day and time. Professional photo, private life photo.",
   "permissions": [
     "storage",
@@ -55,6 +55,12 @@
         "content/content.css"
       ],
       "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/icon128.png"],
+      "matches": ["https://web.whatsapp.com/*"]
     }
   ]
 }

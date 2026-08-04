@@ -9,6 +9,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // Found 2026-08-04: after tapping "Switch now" on the schedule
+  // notification/toast, the badge turns amber deliberately (see
+  // service-worker.js) since there's no way to detect the actual final
+  // tap on WhatsApp's own checkmark from here. But that meant the badge
+  // had no way to ever clear afterward either, sitting there
+  // indefinitely, which reads as broken rather than informative.
+  // Opening the popup at all is a reasonable, standard signal that the
+  // person has seen whatever the badge was about.
+  chrome.runtime.sendMessage({ type: 'SCHEDULE_BADGE_ACKNOWLEDGED' }).catch(() => {});
+
   // Apply i18n translations to all elements with data-i18n attributes
   function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
