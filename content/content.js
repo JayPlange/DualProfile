@@ -404,6 +404,265 @@
       headerImgs.forEach((img, i) => console.log('img['+i+']:', (img.offsetWidth||0)+'x'+(img.offsetHeight||0), (getImageSrc(img)||'').slice(0,60)));
       console.groupEnd();
       return overlay;
+    },
+
+    // 2026-08-08: Logger.debug (used by applyVoiceNoteAvatarOverlays) is
+    // gated behind CONFIG.DEBUG_MODE like every other Logger method, which
+    // defaults to false and resets on every content-script (re)injection.
+    // "No [VOICE-AVATAR] log" therefore does not mean the function didn't
+    // run — it only means DEBUG_MODE was off, exactly as it is for every
+    // other silent Logger call. This diagnostic bypasses that gate entirely
+    // so we get real evidence (actual sizes/src/skip-reasons of every img in
+    // #main) instead of guessing which heuristic is wrong.
+    diagnoseVoiceNote: () => {
+      const main = document.getElementById('main');
+      console.group('[DualProfile] Voice-note avatar diagnosis');
+      console.log('current _voiceNoteAvatarUrl:', typeof _voiceNoteAvatarUrl !== 'undefined' ? (_voiceNoteAvatarUrl ? _voiceNoteAvatarUrl.slice(0,60) : null) : 'undefined (function scope issue)');
+      console.log('current _voiceNoteAvatarPhone:', typeof _voiceNoteAvatarPhone !== 'undefined' ? _voiceNoteAvatarPhone : 'undefined');
+      console.log('watcher installed:', typeof _voiceNoteObserver !== 'undefined' && !!_voiceNoteObserver);
+      if (!main) { console.log('#main not found — no chat open?'); console.groupEnd(); return null; }
+      const imgs = Array.from(main.querySelectorAll('img'));
+      console.log('total <img> in #main:', imgs.length);
+
+      // 2026-08-08: every real candidate came back "treated as
+      // outgoing/undetermined" on BOTH Chrome and Edge — identical failure
+      // on two different WhatsApp builds, which rules out a Business-vs-
+      // personal DOM split and points at _dpIsOutgoingMessageNode()'s
+      // 15-level ancestor walk itself. Rather than guess whether the real
+      // data-id sits deeper, is on a sibling, or doesn't exist at all near
+      // these nodes, walk much further (40 levels) purely for diagnosis and
+      // report exactly where (if anywhere) a data-id actually turns up.
+      function _dpFindNearestDataId(el, maxDepth) {
+        var node = el;
+        for (var d = 0; d < maxDepth && node; d++) {
+          var id = node.getAttribute && node.getAttribute('data-id');
+          if (id) return { depth: d, dataId: id, tag: node.tagName };
+          node = node.parentElement;
+        }
+        return null;
+      }
+
+      const rows = imgs.map((img, i) => {
+        const w = img.offsetWidth, h = img.offsetHeight;
+        const src = getImageSrc(img) || '';
+        const sizeOk = !(w < 40 || w > 70 || h < 40 || h > 70);
+        const srcOk = src.includes('whatsapp.net');
+        const outgoing = typeof _dpIsOutgoingMessageNode === 'function' ? _dpIsOutgoingMessageNode(img) : 'fn missing';
+        const nearest = _dpFindNearestDataId(img, 40);
+        let skipReason = null;
+        if (!sizeOk) skipReason = 'size (' + w + 'x' + h + ', need 40-70)';
+        else if (!srcOk) skipReason = 'src (no whatsapp.net match)';
+        else if (outgoing) skipReason = 'treated as outgoing/undetermined';
+        else skipReason = 'none — should be a match';
+        return {
+          i, w, h, src: src.slice(0, 70), sizeOk, srcOk, outgoing, skipReason,
+          dataIdDepth40: nearest ? nearest.depth : 'none within 40',
+          dataId40: nearest ? nearest.dataId.slice(0, 40) : null,
+        };
+      });
+      console.table(rows);
+      console.groupEnd();
+      return rows;
+    },
+
+    // 2026-08-08: dpVoice() showed every data-id found nearby is a raw hex
+    // stanza id (e.g. "3EB0AE5B71123ED50978F5"), never "true_"/"false_" —
+    // that prefix convention _dpIsOutgoingMessageNode() assumes doesn't
+    // apply to whatever these ancestors actually are. Some values were also
+    // byte-identical across two completely different chats on two different
+    // accounts, which real per-message ids should never be — suggesting the
+    // walk is landing on something other than a message-row id for at least
+    // some candidates. Rather than guess at a replacement heuristic (CSS
+    // class, aria-label, data-pre-plain-text, alignment), dump the real
+    // ancestor chain — tag, id, class, role, aria-label, every data-*
+    // attribute — for one candidate at a time so the actual structure is
+    // visible. Call with the "i" index from dpVoice()'s table, e.g.
+    // dpVoiceChain(2) for the repeated 55x55 candidate both browsers showed.
+    diagnoseVoiceNoteAncestors: (candidateIndex, maxDepth) => {
+      maxDepth = maxDepth || 20;
+      const main = document.getElementById('main');
+      if (!main) { console.log('#main not found'); return null; }
+      const imgs = Array.from(main.querySelectorAll('img'));
+      const img = imgs[candidateIndex];
+      if (!img) { console.log('no candidate at index', candidateIndex, '— total imgs:', imgs.length); return null; }
+
+      console.group('[DualProfile] Ancestor chain for candidate ' + candidateIndex);
+      console.log('img:', (img.offsetWidth||0)+'x'+(img.offsetHeight||0), (getImageSrc(img)||'').slice(0,70));
+      const chain = [];
+      var node = img;
+      for (var d = 0; d < maxDepth && node; d++) {
+        var attrs = {};
+        if (node.attributes) {
+          for (var a = 0; a < node.attributes.length; a++) {
+            var at = node.attributes[a];
+            if (at.name.indexOf('data-') === 0 || at.name === 'role' || at.name === 'aria-label') {
+              attrs[at.name] = String(at.value).slice(0, 60);
+            }
+          }
+        }
+        var entry = {
+          depth: d,
+          tag: node.tagName || '(text)',
+          className: (node.className && typeof node.className === 'string') ? node.className.slice(0, 80) : '',
+          ...attrs,
+        };
+        chain.push(entry);
+        node = node.parentElement;
+      }
+      console.table(chain);
+      console.groupEnd();
+      return chain;
+    },
+
+    // 2026-08-08: dpVoiceChain(2) confirmed the depth-13 data-id
+    // (AC54937C52370B8394F70C47A56CFAF9) is a bare message-stanza hash, no
+    // "@", never true_/false_ — a different id family entirely from the
+    // "@c.us"/"@s.whatsapp.net" true_/false_ ids that stripWhatsAppPrefix()
+    // and resolveCurrentContact() ALREADY read successfully everywhere else
+    // in this file. This checks whether that proven pattern exists
+    // somewhere inside the message row itself (children, not ancestors) —
+    // reusing exactly what already works elsewhere, rather than inventing a
+    // new heuristic (CSS class / aria-label / data-pre-plain-text) with no
+    // evidence it's even present on a voice-note row.
+    diagnoseVoiceNoteRowIds: (candidateIndex) => {
+      const main = document.getElementById('main');
+      if (!main) { console.log('#main not found'); return null; }
+      const imgs = Array.from(main.querySelectorAll('img'));
+      const img = imgs[candidateIndex];
+      if (!img) { console.log('no candidate at index', candidateIndex, '— total imgs:', imgs.length); return null; }
+
+      // Find the message-row container the same way the production code
+      // will: nearest ancestor carrying a data-testid starting "conv-msg-".
+      var node = img, row = null;
+      for (var d = 0; d < 40 && node; d++) {
+        var testid = node.getAttribute && node.getAttribute('data-testid');
+        if (testid && testid.indexOf('conv-msg-') === 0) { row = node; break; }
+        node = node.parentElement;
+      }
+      if (!row) { console.log('no conv-msg- row found within 40 ancestors for candidate', candidateIndex); return null; }
+
+      console.group('[DualProfile] Row @c.us/@s.whatsapp.net search for candidate ' + candidateIndex);
+      console.log('row data-testid:', row.getAttribute('data-testid'));
+      console.log('row data-id:', row.getAttribute('data-id'));
+      const idEls = Array.from(row.querySelectorAll('[data-id*="@c.us"], [data-id*="@s.whatsapp.net"]'));
+      console.log('matches inside row:', idEls.length);
+      const results = idEls.map(function(el, i) {
+        return { i: i, tag: el.tagName, dataId: (el.getAttribute('data-id') || '').slice(0, 60) };
+      });
+      console.table(results);
+      // Also check the row's own aria-label/title, and its immediate
+      // parent's — a cheap secondary signal if the @c.us pattern isn't
+      // present on voice-note rows at all.
+      console.log('row aria-label:', row.getAttribute('aria-label'), '| title:', row.getAttribute('title'));
+      console.log('row parentElement aria-label:', row.parentElement && row.parentElement.getAttribute('aria-label'), '| title:', row.parentElement && row.parentElement.getAttribute('title'));
+      console.groupEnd();
+      return results;
+    },
+
+    // 2026-08-08: dpVoiceRow(2) found zero @c.us ids and no aria-label/title
+    // on voice-note rows — the proven data-id pattern genuinely doesn't
+    // exist here, this isn't a search-radius problem. Two remaining,
+    // evidenced-not-guessed candidates: (1) dpVoiceChain(2)'s className at
+    // depth 8 was truncated to 80 chars mid-word ("...xgdw1sx false fals"),
+    // which may be hiding a real signal; (2) WhatsApp consistently
+    // right-aligns your own bubbles and left-aligns the other person's,
+    // regardless of hashed class names — this checks the row's actual
+    // horizontal position against the message-list container's width.
+    diagnoseVoiceNoteDirectionSignals: (candidateIndex) => {
+      const main = document.getElementById('main');
+      if (!main) { console.log('#main not found'); return null; }
+      const imgs = Array.from(main.querySelectorAll('img'));
+      const img = imgs[candidateIndex];
+      if (!img) { console.log('no candidate at index', candidateIndex); return null; }
+
+      var node = img, row = null;
+      var ancestors = [];
+      for (var d = 0; d < 40 && node; d++) {
+        ancestors.push(node);
+        var testid = node.getAttribute && node.getAttribute('data-testid');
+        if (testid && testid.indexOf('conv-msg-') === 0) { row = node; break; }
+        node = node.parentElement;
+      }
+      if (!row) { console.log('no conv-msg- row found for candidate', candidateIndex); return null; }
+
+      console.group('[DualProfile] Direction signals for candidate ' + candidateIndex);
+
+      // 1. Full, untruncated className for the row and each ancestor up to it.
+      console.log('--- full className chain (img -> row) ---');
+      ancestors.forEach(function(n, i) {
+        console.log(i + ' [' + n.tagName + ']:', n.className || '(none)');
+      });
+
+      // 2. Horizontal position vs the message-list container.
+      var container = main.querySelector('[data-testid="conversation-panel-messages"]') || main;
+      var rowRect = row.getBoundingClientRect();
+      var contRect = container.getBoundingClientRect();
+      var leftGap = rowRect.left - contRect.left;
+      var rightGap = contRect.right - rowRect.right;
+      console.log('--- position ---');
+      console.log('row rect:', JSON.stringify({left: Math.round(rowRect.left), right: Math.round(rowRect.right), width: Math.round(rowRect.width)}));
+      console.log('container rect:', JSON.stringify({left: Math.round(contRect.left), right: Math.round(contRect.right), width: Math.round(contRect.width)}));
+      console.log('leftGap:', Math.round(leftGap), '| rightGap:', Math.round(rightGap), '-> hugs', leftGap < rightGap ? 'LEFT (likely incoming)' : 'RIGHT (likely outgoing)');
+
+      const result = {
+        classNames: ancestors.map(function(n) { return n.className || ''; }),
+        leftGap: Math.round(leftGap),
+        rightGap: Math.round(rightGap),
+        hugs: leftGap < rightGap ? 'left' : 'right',
+      };
+      console.groupEnd();
+      return result;
+    },
+
+    // 2026-08-08: dpVoiceDir's row-level position check came back identical
+    // for both candidates (2 and 9) — the row wrapper is full-width
+    // regardless of direction, wrong element to measure. But the raw
+    // className dump showed depth-4 and depth-8 classes differing between
+    // candidates 2 and 9, AND that difference SWAPS between Chrome and Edge
+    // for the same two candidates — since Chrome/Edge are opposite sides of
+    // the same conversation, a class flipping exactly like that between
+    // viewpoints is a real signal, just not provable from an unstable hash
+    // alone. This checks computed style (flexDirection/justifyContent/
+    // textAlign/margins) AND actual bounding-rect position at every level
+    // from the image up to the row, for two candidates side by side, so we
+    // can see exactly where (if anywhere) direction is really encoded.
+    diagnoseVoiceNoteCompare: (indexA, indexB) => {
+      const main = document.getElementById('main');
+      if (!main) { console.log('#main not found'); return null; }
+      const imgs = Array.from(main.querySelectorAll('img'));
+      const container = main.querySelector('[data-testid="conversation-panel-messages"]') || main;
+      const contRect = container.getBoundingClientRect();
+
+      function walk(idx) {
+        const img = imgs[idx];
+        if (!img) return null;
+        var node = img, out = [];
+        for (var d = 0; d < 20 && node; d++) {
+          var cs = window.getComputedStyle(node);
+          var r = node.getBoundingClientRect();
+          out.push({
+            depth: d, tag: node.tagName,
+            flexDirection: cs.flexDirection, justifyContent: cs.justifyContent,
+            textAlign: cs.textAlign, float: cs.float,
+            marginLeft: cs.marginLeft, marginRight: cs.marginRight,
+            left: Math.round(r.left - contRect.left), right: Math.round(contRect.right - r.right),
+            width: Math.round(r.width),
+          });
+          var testid = node.getAttribute && node.getAttribute('data-testid');
+          if (testid && testid.indexOf('conv-msg-') === 0) break;
+          node = node.parentElement;
+        }
+        return out;
+      }
+
+      console.group('[DualProfile] Compare candidates ' + indexA + ' vs ' + indexB);
+      const a = walk(indexA), b = walk(indexB);
+      console.log('--- candidate ' + indexA + ' ---');
+      console.table(a);
+      console.log('--- candidate ' + indexB + ' ---');
+      console.table(b);
+      console.groupEnd();
+      return { a, b };
     }
   };
 
@@ -411,6 +670,11 @@
   window.testApply  = () => window.DualProfileDebug.forceApply();
   window.dpDiagnose = () => window.DualProfileDebug.diagnose();
   window.dpStatus   = () => window.DualProfileDebug.status();
+  window.dpVoice    = () => window.DualProfileDebug.diagnoseVoiceNote();
+  window.dpVoiceChain = (idx, depth) => window.DualProfileDebug.diagnoseVoiceNoteAncestors(idx, depth);
+  window.dpVoiceRow = (idx) => window.DualProfileDebug.diagnoseVoiceNoteRowIds(idx);
+  window.dpVoiceDir = (idx) => window.DualProfileDebug.diagnoseVoiceNoteDirectionSignals(idx);
+  window.dpVoiceCmp = (idxA, idxB) => window.DualProfileDebug.diagnoseVoiceNoteCompare(idxA, idxB);
   window.dpPhone    = () => window.DualProfileDebug.getActivePhone();
   window.dpRescan   = () => window.DualProfileDebug.rescan();
   window.dpDebugOn  = () => window.DualProfileDebug.enable();
@@ -1616,6 +1880,10 @@ async function init() {
 
     // Install forward modal overlay (applies assigned photos to "Forward message to" dialog)
     installForwardModalOverlay();
+
+    // Install voice-note avatar watcher (applies assigned photo to the small
+    // per-message avatar WhatsApp renders next to voice notes, 1:1 chats included)
+    installVoiceNoteAvatarWatcher();
 
     // Inject notification interceptor into page main world
     installNotificationInterceptor();
@@ -5204,11 +5472,23 @@ function tryRenderHeader() {
         // Phone known, confirmed no P2P photo for this contact
         _tryRenderHeaderRetries = 0;
         removeDualProfileHeaderOverlay(header);
+        clearVoiceNoteAvatarOverlays();
       }
       return;
     }
 
     _tryRenderHeaderRetries = 0;
+
+    // Voice-note avatars share the same P2P photo as the header — same
+    // source of truth, resolved once here rather than re-derived.
+    // installVoiceNoteAvatarWatcher() is idempotent (no-ops if already
+    // installed) — called again here because the init-time call can run
+    // before #main exists (no chat open yet), and this is the first point
+    // we can guarantee a chat is actually open.
+    installVoiceNoteAvatarWatcher();
+    _voiceNoteAvatarUrl = photoUrl;
+    _voiceNoteAvatarPhone = phone;
+    applyVoiceNoteAvatarOverlays(photoUrl, phone);
 
     // 6. Idempotent — skip if overlay div already shows the correct photo
     var _ovDiv = header.querySelector('.dp-av-overlay');
@@ -6167,6 +6447,181 @@ function attachViewerInterceptor(overlayEl, phone, contactName) {
 //   2. Reads window.__dpPhotoMap (phone→dataURL) kept fresh by content.js
 //   3. Matches the notification title (contact name/phone) against the map
 //   4. Replaces the icon with the assigned photo before the OS sees it
+
+// ===================== VOICE NOTE AVATAR OVERLAY =====================
+// Voice note (PTT) bubbles render their own small (~55x55) circular avatar
+// next to each one, even inside a 1:1 chat — confirmed via live DOM
+// inspection with Webb on 2026-08-08 (element: 55x55 <img>, src on
+// media-*.cdn.whatsapp.net, no data-testid/aria-label, only atomic/hashed
+// classes — nothing stable to key off directly). This is new functionality;
+// nothing in this file touched these elements before.
+//
+// IMPORTANT, confirmed with Webb 2026-08-08: he runs two different WhatsApp
+// products side by side — Chrome = WhatsApp BUSINESS, Edge = WhatsApp
+// ORIGINAL/personal. The DOM snippet above was captured on Chrome
+// (Business) only. It has NOT been verified against Edge/personal WhatsApp,
+// and WhatsApp Business Web is a materially different build (different
+// header layout has already bitten this file once — see the header
+// selector fallback tiers elsewhere). Do not assume the 40-70px size window
+// or the whatsapp.net src substring hold on the personal build until
+// confirmed via DualProfileDebug.diagnoseVoiceNote() run ON EDGE specifically.
+// This is a live, ranked hypothesis for why the fix tested as "not working":
+// the heuristics may simply be Business-only and silently no-op on personal
+// WhatsApp's differently-shaped voice-note avatar element, not yet
+// confirmed either way.
+//
+// Deliberately narrow scope: only the currently open 1:1 chat, only the
+// OTHER person's incoming voice notes, never the viewer's own outgoing
+// ones. Reuses the exact phone/photoUrl tryRenderHeader() already resolved
+// for the header as its single source of truth, instead of re-deriving P2P
+// state independently — if the header is showing the right photo, voice
+// notes use that same value.
+//
+// Direction detection (rewritten 2026-08-08, replaces a wrong assumption):
+// originally assumed message rows carried a data-id in the "true_<id>@..."/
+// "false_<id>@..." form the same way stripWhatsAppPrefix() reads elsewhere
+// in this file. Verified against Webb's live DOM on both his WhatsApp
+// Business (Chrome) and personal (Edge) accounts and that assumption was
+// wrong: every data-id found near a voice-note avatar, at any ancestor
+// depth, was a bare hex message-stanza hash with no "@" and no true_/false_
+// prefix (e.g. "AC54937C52370B8394F70C47A56CFAF9") — a different id family
+// entirely. A direct search for the real "@c.us"/"@s.whatsapp.net" pattern
+// inside the message row (data-testid^="conv-msg-") also came back empty —
+// it genuinely isn't present on voice-note rows, this wasn't a search-depth
+// problem.
+//
+// What actually works, confirmed on real messages in both directions on
+// both accounts: WhatsApp nests a ~336px "bubble content" wrapper a few
+// levels above the small avatar, narrower than the always-full-width
+// message row, and positions it left (incoming) or right (outgoing) via
+// flexbox — a stable product-level layout invariant, not a hashed class
+// name (this file already avoids keying off those elsewhere, for good
+// reason: they change on every WhatsApp deploy). Walk up from the avatar to
+// find that narrower wrapper, then compare its horizontal centre to the
+// message-list container's centre.
+//
+// Unverified edge case, flagging rather than assuming it away: this has
+// only been checked in Webb's actual LTR layout. An RTL locale could mirror
+// which side is "own messages" — not something to guess at without evidence.
+
+var _voiceNoteAvatarUrl   = null; // last-known P2P photo for the open chat
+var _voiceNoteAvatarPhone = null;
+var _voiceNoteObserver    = null;
+var _voiceNoteDebounce    = null;
+
+function _dpIsOutgoingMessageNode(el) {
+  var main = document.getElementById('main');
+  if (!main) return true; // can't establish context — stay defensive
+
+  var container = main.querySelector('[data-testid="conversation-panel-messages"]') || main;
+  var contRect = container.getBoundingClientRect();
+  if (!contRect.width) return true;
+
+  // Find the message row the same way diagnoseVoiceNoteRowIds() proved
+  // reliable — nearest ancestor with data-testid starting "conv-msg-".
+  var node = el, row = null;
+  for (var d = 0; d < 20 && node; d++) {
+    var testid = node.getAttribute && node.getAttribute('data-testid');
+    if (testid && testid.indexOf('conv-msg-') === 0) { row = node; break; }
+    node = node.parentElement;
+  }
+  if (!row) return true; // can't establish context — stay defensive
+
+  // Within the row (confirmed always full-width), find the WIDEST ancestor
+  // walking up from el that is still meaningfully narrower than the row —
+  // that's the real bubble-content wrapper. NOT a fixed depth number (DOM
+  // depth varies slightly by message type), and deliberately NOT "first
+  // narrower than the row" either: the avatar itself (55px) trivially
+  // satisfies that on its own, which would stop the walk at depth 0 and
+  // defeat the point. Keep climbing while still narrower than the row;
+  // stop at the last one before width jumps up to the row's own width.
+  var rowRect = row.getBoundingClientRect();
+  var probe = el, bubble = null;
+  for (var d2 = 0; d2 < 20 && probe && probe !== row; d2++) {
+    var pr = probe.getBoundingClientRect();
+    if (pr.width > 0 && pr.width < rowRect.width * 0.85) {
+      bubble = probe; // still narrower than the row — keep it, keep climbing
+    } else if (bubble) {
+      break; // just widened to (about) the row's own width — previous one was the real wrapper
+    }
+    probe = probe.parentElement;
+  }
+  var refRect = bubble ? bubble.getBoundingClientRect() : el.getBoundingClientRect();
+  if (!refRect.width) return true;
+
+  var elCenter   = refRect.left + refRect.width / 2;
+  var contCenter = contRect.left + contRect.width / 2;
+  return elCenter > contCenter; // right half = outgoing (skip), left half = incoming (apply)
+}
+
+function applyVoiceNoteAvatarOverlays(photoUrl, phone) {
+  if (!state.enabled || !photoUrl) return;
+  var main = document.getElementById('main');
+  if (!main) return;
+
+  var candidates = main.querySelectorAll('img');
+  for (var i = 0; i < candidates.length; i++) {
+    var img = candidates[i];
+    var w = img.offsetWidth, h = img.offsetHeight;
+    if (w < 40 || w > 70 || h < 40 || h > 70) continue; // voice-note avatar footprint only
+    var src = getImageSrc(img) || '';
+    if (!src.includes('whatsapp.net')) continue;
+    if (img.dataset.dpVoiceAvatarUrl === photoUrl) continue; // already correct
+
+    if (_dpIsOutgoingMessageNode(img)) continue; // never touch own/undetermined messages
+
+    if (!img.dataset.dpVoiceOrigSrc) img.dataset.dpVoiceOrigSrc = src;
+    setImageSource(img, photoUrl);
+    img.dataset.dpVoiceAvatarUrl = photoUrl;
+    Logger.debug('[VOICE-AVATAR] Applied P2P photo to voice-note avatar for phone:', phone);
+  }
+}
+
+function clearVoiceNoteAvatarOverlays() {
+  var main = document.getElementById('main');
+  if (main) {
+    var applied = main.querySelectorAll('img[data-dp-voice-avatar-url]');
+    for (var i = 0; i < applied.length; i++) {
+      var img = applied[i];
+      var orig = img.dataset.dpVoiceOrigSrc;
+      if (orig) setImageSource(img, orig);
+      delete img.dataset.dpVoiceAvatarUrl;
+      delete img.dataset.dpVoiceOrigSrc;
+    }
+  }
+  _voiceNoteAvatarUrl = null;
+  _voiceNoteAvatarPhone = null;
+}
+
+/**
+ * Watches the open chat panel for new/scrolled-in message nodes (new
+ * incoming voice notes, virtual-scroll history loads) and re-applies the
+ * last-known P2P photo to any new voice-note avatars found. No-ops
+ * entirely whenever no photo is currently assigned for the open chat.
+ */
+var _voiceNoteObserverTarget = null; // which #main node is currently observed
+
+function installVoiceNoteAvatarWatcher() {
+  var main = document.getElementById('main');
+  if (!main) return;
+  // Re-attach if WhatsApp swapped in a different #main node (chat switch
+  // that replaces the panel entirely, not just its children) — a stale
+  // observer on a detached node silently stops firing, same class of bug
+  // documented elsewhere in this file for the header ("WhatsApp replaces
+  // the header node above the level our MutationObserver catches").
+  if (_voiceNoteObserver && _voiceNoteObserverTarget === main) return;
+  if (_voiceNoteObserver) _voiceNoteObserver.disconnect();
+
+  _voiceNoteObserverTarget = main;
+  _voiceNoteObserver = new MutationObserver(function() {
+    if (!_voiceNoteAvatarUrl) return;
+    clearTimeout(_voiceNoteDebounce);
+    _voiceNoteDebounce = setTimeout(function() {
+      applyVoiceNoteAvatarOverlays(_voiceNoteAvatarUrl, _voiceNoteAvatarPhone);
+    }, 150);
+  });
+  _voiceNoteObserver.observe(main, { childList: true, subtree: true });
+}
 
 // ===================== FORWARD MODAL OVERLAY =====================
 // Applies assigned photo overlays to the "Forward message to" modal.
