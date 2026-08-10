@@ -19,9 +19,15 @@ function getEffectiveTier(user: { tier: string }): "pro" | "free" {
 // helper is the actual fix: for a viewer with no specific per-contact
 // assignment, compute which slot the owner's schedule says should be
 // showing right now, on the owner's OWN clock (via the stored UTC offset,
-// not the viewer's or the server's). Returns null if there's no schedule or
-// it's disabled — callers must treat null exactly as "no fallback available",
-// same as "no assignment" was treated before this fix existed.
+// not the viewer's or the server's). Returns null if there's no schedule,
+// it's disabled, or the current moment is outside the scheduled window —
+// callers must treat null exactly as "no fallback available", same as "no
+// assignment" was treated before this fix existed. Confirmed with Webb
+// (2026-08-07): the schedule must only ever apply *during* its own window,
+// never as a standing "opposite slot" default the rest of the time — an
+// earlier version returned the flipped slot outside the window, which meant
+// any viewer without an explicit assignment saw an override permanently,
+// not just during the scheduled hours.
 async function getScheduleFallbackPhotoNumber(
   ctx: any,
   ownerUserId: any
@@ -43,7 +49,10 @@ async function getScheduleFallbackPhotoNumber(
     currentMinutes >= startMinutes &&
     currentMinutes < endMinutes;
 
-  return inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
+  // Only ever apply within the scheduled window itself. Outside it, there is
+  // no fallback — return null so callers fall through to "no override"
+  // (the viewer's real, unmodified photo), exactly as if no schedule existed.
+  return inWindow ? schedule.photoNumber : null;
 }
 
 // ── assignContact ────────────────────────────────────────────────────────────
