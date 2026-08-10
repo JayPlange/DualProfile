@@ -140,6 +140,32 @@ async function swSet(data) {
   });
 }
 
+// ── Serialized storage lock ─────────────────────────────────────────────
+// handleAssignContact, handleRemoveContact, handleQuickSwitchPhotos and
+// handleImportAssignments all read 'state', mutate state.rules.contactMap
+// in memory, then write the whole 'state' object back. swSet()'s merge is
+// only one level deep (Object.assign on the top-level state keys), so if
+// two of these overlap -- e.g. a user taps unassign right as Quick Switch
+// or an import runs -- the second one to finish writes a contactMap it
+// read *before* the first one's change, silently reverting it. No error,
+// no log, it just looks like "the unassign didn't take" or "an assignment
+// showed up on a contact nobody touched".
+//
+// Fix: every handler that does read-state -> mutate -> write-state (and,
+// where relevant, the matching assignmentHistory append) must run its
+// critical section through withLock() instead of calling swGet/swSet
+// directly. withLock() chains every call through a single promise, so
+// only one critical section executes at a time, regardless of which
+// handler it came from.
+let _swLockChain = Promise.resolve();
+function withLock(fn) {
+  const run = _swLockChain.then(fn, fn);
+  // Keep the chain alive even if this critical section throws, so a
+  // rejected promise doesn't permanently wedge every later caller.
+  _swLockChain = run.then(() => {}, () => {});
+  return run;
+}
+
 // Default state structure (matches content.js expectations)
 function getDefaultState() {
   return {
@@ -743,64 +769,80 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Assign contact to photo
 async function handleAssignContact(message, sendResponse) {
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-
-    // Get tier info
+    // Tier lookup doesn't touch shared state — fine to run outside the lock.
     const tierData = await TierSystem.getUserTier();
-    // Count unique phone-keyed entries as canonical; name-keyed entries without
-    // a corresponding phone key are counted separately (unresolved-phone contacts).
-    const map = state.rules.contactMap;
-    const phoneKeyCount = Object.keys(map).filter(k => /^\d{7,15}$/.test(k)).length;
-    const nameOnlyCount = Object.keys(map).filter(k => !/^\d+$/.test(k) && !Object.keys(map).some(pk => /^\d{7,15}$/.test(pk))).length;
-    const currentCount = phoneKeyCount + nameOnlyCount;
-    const limit = tierData.limits && tierData.limits.maxContacts;
 
-    // Primary key: phone if available, name as fallback
-    const contactId = message.contactId; // already resolved to phone or name by storage.js
-    const isNewContact = !map[contactId];
+    const response = await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
 
-    // Check limit (skip if already assigned or the tier has no cap).
-    // Unlimited is null, not Infinity — see lib/tier-system.js. This path
-    // happened to still work because the SW reads TierSystem directly rather
-    // than over sendMessage, but it must not depend on that.
-    if (isNewContact && !TierSystem.isUnlimited(limit) && currentCount >= limit) {
-      sendResponse({
-        success: false,
-        error: 'TIER_LIMIT',
-        message: `Free tier allows ${limit} contacts. Upgrade to Pro for unlimited.`,
-        currentCount,
-        limit,
-        tier: tierData.tier
+      // Count unique phone-keyed entries as canonical; name-keyed entries without
+      // a corresponding phone key are counted separately (unresolved-phone contacts).
+      const map = state.rules.contactMap;
+      const phoneKeyCount = Object.keys(map).filter(k => /^\d{7,15}$/.test(k)).length;
+      const nameOnlyCount = Object.keys(map).filter(k => !/^\d+$/.test(k) && !Object.keys(map).some(pk => /^\d{7,15}$/.test(pk))).length;
+      const currentCount = phoneKeyCount + nameOnlyCount;
+      const limit = tierData.limits && tierData.limits.maxContacts;
+
+      // Primary key: phone if available, name as fallback
+      const contactId = message.contactId; // already resolved to phone or name by storage.js
+      const isNewContact = !map[contactId];
+
+      // Check limit (skip if already assigned or the tier has no cap).
+      // Unlimited is null, not Infinity — see lib/tier-system.js. This path
+      // happened to still work because the SW reads TierSystem directly rather
+      // than over sendMessage, but it must not depend on that.
+      if (isNewContact && !TierSystem.isUnlimited(limit) && currentCount >= limit) {
+        return {
+          success: false,
+          error: 'TIER_LIMIT',
+          message: `Free tier allows ${limit} contacts. Upgrade to Pro for unlimited.`,
+          currentCount,
+          limit,
+          tier: tierData.tier
+        };
+      }
+
+      console.debug('[DualProfile][SW] handleAssignContact — before write:', contactId, '→', message.photoId,
+        '| name:', message.contactName || '(none)');
+
+      // Single canonical write — phone key only (or name if phone unavailable).
+      // No alias write. content.js resolves name→phone via namePhoneCache (Pass 0),
+      // then falls back to iterating values for name match (Pass 1).
+      map[contactId] = message.photoId;
+
+      await swSet({ state });
+      console.debug('[DualProfile][SW] handleAssignContact — after write:', contactId);
+
+      // Log to assignment history (capped at 50 entries)
+      try {
+        const histResult = await swGet('assignmentHistory');
+        const hist = histResult.assignmentHistory || [];
+        hist.unshift({ contactId, contactPhone: message.contactPhone || null,
+          action: 'assigned', toPhoto: message.photoId, timestamp: Date.now() });
+        if (hist.length > 50) hist.length = 50;
+        await swSet({ assignmentHistory: hist });
+      } catch(e) {}
+
+      return {
+        success: true,
+        contactCount: Object.keys(state.rules.contactMap).length
+      };
+    });
+
+    // Tell any open WhatsApp tabs to reload state — content.js caches
+    // state.rules.contactMap in memory (loadData(), only refreshed on init
+    // or this message) and both the header overlay (getPhotoForContact)
+    // and sidebar overlay (applyOverlayToRow) read from that cache, not
+    // fresh storage. Without this, a new assignment never shows up on an
+    // already-open tab until the page is reloaded some other way.
+    if (response.success) {
+      chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, function(tabs) {
+        tabs.forEach(function(tab) { chrome.tabs.sendMessage(tab.id, { type: 'PHOTOS_UPDATED' }).catch(function() {}); });
       });
-      return;
     }
 
-    console.debug('[DualProfile][SW] handleAssignContact — before write:', contactId, '→', message.photoId,
-      '| name:', message.contactName || '(none)');
-
-    // Single canonical write — phone key only (or name if phone unavailable).
-    // No alias write. content.js resolves name→phone via namePhoneCache (Pass 0),
-    // then falls back to iterating values for name match (Pass 1).
-    map[contactId] = message.photoId;
-
-    await swSet({ state });
-    console.debug('[DualProfile][SW] handleAssignContact — after write:', contactId);
-
-    // Log to assignment history (capped at 50 entries)
-    try {
-      const histResult = await swGet('assignmentHistory');
-      const hist = histResult.assignmentHistory || [];
-      hist.unshift({ contactId, contactPhone: message.contactPhone || null,
-        action: 'assigned', toPhoto: message.photoId, timestamp: Date.now() });
-      if (hist.length > 50) hist.length = 50;
-      await swSet({ assignmentHistory: hist });
-    } catch(e) {}
-
-    sendResponse({
-      success: true,
-      contactCount: Object.keys(state.rules.contactMap).length
-    });
+    sendResponse(response);
 
   } catch (error) {
     console.error('[DualProfile][SW] handleAssignContact error:', error.message);
@@ -811,41 +853,54 @@ async function handleAssignContact(message, sendResponse) {
 // Remove contact assignment
 async function handleRemoveContact(message, sendResponse) {
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
+    const response = await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
 
-    console.debug('[DualProfile][SW] handleRemoveContact — before write:', message.contactId, '| name:', message.contactName || '(none)');
+      console.debug('[DualProfile][SW] handleRemoveContact — before write:', message.contactId, '| name:', message.contactName || '(none)');
 
-    // Delete primary key (phone or name, resolved by storage.js)
-    delete state.rules.contactMap[message.contactId];
+      // Delete primary key (phone or name, resolved by storage.js)
+      delete state.rules.contactMap[message.contactId];
 
-    // Belt-and-suspenders: also clear any stale phone variants and name key
-    // in case old data was written before the phone-primary migration.
-    if (message.contactPhone) {
-      const normPhone = String(message.contactPhone).replace(/\D/g, '');
-      if (normPhone.length >= 7) delete state.rules.contactMap[normPhone];
-    }
-    if (message.contactName && message.contactName !== message.contactId) {
-      delete state.rules.contactMap[message.contactName];
-    }
+      // Belt-and-suspenders: also clear any stale phone variants and name key
+      // in case old data was written before the phone-primary migration.
+      if (message.contactPhone) {
+        const normPhone = String(message.contactPhone).replace(/\D/g, '');
+        if (normPhone.length >= 7) delete state.rules.contactMap[normPhone];
+      }
+      if (message.contactName && message.contactName !== message.contactId) {
+        delete state.rules.contactMap[message.contactName];
+      }
 
-    await swSet({ state });
-    console.debug('[DualProfile][SW] handleRemoveContact — after write:', message.contactId);
+      await swSet({ state });
+      console.debug('[DualProfile][SW] handleRemoveContact — after write:', message.contactId);
 
-    // Log to assignment history
-    try {
-      const histResult = await swGet('assignmentHistory');
-      const hist = histResult.assignmentHistory || [];
-      hist.unshift({ contactId: message.contactId, contactPhone: message.contactPhone || null,
-        action: 'unassigned', toPhoto: null, timestamp: Date.now() });
-      if (hist.length > 50) hist.length = 50;
-      await swSet({ assignmentHistory: hist });
-    } catch(e) {}
+      // Log to assignment history
+      try {
+        const histResult = await swGet('assignmentHistory');
+        const hist = histResult.assignmentHistory || [];
+        hist.unshift({ contactId: message.contactId, contactPhone: message.contactPhone || null,
+          action: 'unassigned', toPhoto: null, timestamp: Date.now() });
+        if (hist.length > 50) hist.length = 50;
+        await swSet({ assignmentHistory: hist });
+      } catch(e) {}
 
-    sendResponse({
-      success: true,
-      contactCount: Object.keys(state.rules.contactMap).length
+      return {
+        success: true,
+        contactCount: Object.keys(state.rules.contactMap).length
+      };
     });
+
+    // Same reasoning as handleAssignContact: without this, content.js keeps
+    // showing whatever photo was cached before the removal — exactly the
+    // "unassigned but still shows the old photo" symptom.
+    if (response.success) {
+      chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, function(tabs) {
+        tabs.forEach(function(tab) { chrome.tabs.sendMessage(tab.id, { type: 'PHOTOS_UPDATED' }).catch(function() {}); });
+      });
+    }
+
+    sendResponse(response);
 
   } catch (error) {
     sendResponse({ success: false, error: error.message });
@@ -871,11 +926,12 @@ async function handleGetState(sendResponse) {
 // Save photo
 async function handleSavePhoto(message, sendResponse) {
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-
-    state.photos[message.photoId] = message.photoData;
-    await swSet({ state });
+    await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
+      state.photos[message.photoId] = message.photoData;
+      await swSet({ state });
+    });
 
     // Fix F: when a photo is removed (photoData === null), delete from Convex too.
     // Previously the deletePhoto mutation existed in photos.ts but was never called.
@@ -910,13 +966,12 @@ async function handleSavePhoto(message, sendResponse) {
 // Update settings
 async function handleUpdateSettings(message, sendResponse) {
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-
-    Object.assign(state.settings, message.settings);
-
-    await swSet({ state });
-
+    await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
+      Object.assign(state.settings, message.settings);
+      await swSet({ state });
+    });
 
     sendResponse({ success: true });
 
@@ -931,19 +986,23 @@ async function handleClearAll(sendResponse) {
     // Atomic overwrite — eliminates clear()+set() race window.
     // Fix L: also clear pendingAssignments and namePhoneCache — without this,
     // queued assignments flush on next SW startup and re-poison the cleared state.
-    await swSet({
-      state: getDefaultState(),
-      p2pDataUrls: {},
-      p2pCloudinaryUrls: {},
-      p2pContactNames: {},
-      myPhone: null,
-      myPhoneHash: null,
-      convexUserId: null,
-      syncEnabled: false,
-      pendingAssignments: [],
-      namePhoneCache: {},
-      assignmentHistory: [],
-
+    // Routed through withLock() too: without it, a state-mutation already in
+    // flight (e.g. an assign click that started just before Clear All) could
+    // finish writing after this and resurrect stale data over a "cleared" state.
+    await withLock(async () => {
+      await swSet({
+        state: getDefaultState(),
+        p2pDataUrls: {},
+        p2pCloudinaryUrls: {},
+        p2pContactNames: {},
+        myPhone: null,
+        myPhoneHash: null,
+        convexUserId: null,
+        syncEnabled: false,
+        pendingAssignments: [],
+        namePhoneCache: {},
+        assignmentHistory: [],
+      });
     });
 
     // Fix L: Reset SyncManager in-memory state. If the SW doesn't restart
@@ -979,17 +1038,17 @@ async function handleClearAll(sendResponse) {
 // Set Pro status (for developer testing)
 async function handleSetProStatus(message, sendResponse) {
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-
-    state.meta.isPro = !!message.isPro;
-
-    await swSet({ state });
-
+    const isPro = await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
+      state.meta.isPro = !!message.isPro;
+      await swSet({ state });
+      return state.meta.isPro;
+    });
 
     sendResponse({
       success: true,
-      isPro: state.meta.isPro
+      isPro
     });
 
   } catch (error) {
@@ -1131,22 +1190,26 @@ async function handleSetDevMode(message, sendResponse) {
 async function handleQuickSwitchPhotos(sendResponse) {
   await _syncInitPromise;
   try {
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-    const map = state.rules.contactMap;
-    let switchCount = 0;
-    for (const id of Object.keys(map)) {
-      if (map[id] === 'photo1') { map[id] = 'photo2'; switchCount++; }
-      else if (map[id] === 'photo2') { map[id] = 'photo1'; switchCount++; }
-    }
-    await swSet({ state });
-    try {
-      const histResult = await swGet('assignmentHistory');
-      const hist = histResult.assignmentHistory || [];
-      hist.unshift({ contactId: '__quick_switch__', action: 'quick_switch', switchCount, timestamp: Date.now() });
-      if (hist.length > 50) hist.length = 50;
-      await swSet({ assignmentHistory: hist });
-    } catch(e) {}
+    const { switchCount, map } = await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
+      const map = state.rules.contactMap;
+      let switchCount = 0;
+      for (const id of Object.keys(map)) {
+        if (map[id] === 'photo1') { map[id] = 'photo2'; switchCount++; }
+        else if (map[id] === 'photo2') { map[id] = 'photo1'; switchCount++; }
+      }
+      await swSet({ state });
+      try {
+        const histResult = await swGet('assignmentHistory');
+        const hist = histResult.assignmentHistory || [];
+        hist.unshift({ contactId: '__quick_switch__', action: 'quick_switch', switchCount, timestamp: Date.now() });
+        if (hist.length > 50) hist.length = 50;
+        await swSet({ assignmentHistory: hist });
+      } catch(e) {}
+      return { switchCount, map };
+    });
+
     chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, function(tabs) {
       tabs.forEach(function(tab) { chrome.tabs.sendMessage(tab.id, { type: 'PHOTOS_UPDATED' }).catch(function() {}); });
     });
@@ -1574,9 +1637,6 @@ async function handleActivateLicense(message, sendResponse) {
     }
 
     // Step 3: Store license and set Pro / Lifetime status
-    const result = await swGet('state');
-    const state = result.state || getDefaultState();
-
     // Detect lifetime vs annual vs monthly from variant name or variant ID
     const variantName = (validateResult.meta?.variantName || '').toLowerCase();
     const isLifetimeLicense = variantName.includes('lifetime') ||
@@ -1590,21 +1650,24 @@ async function handleActivateLicense(message, sendResponse) {
       variantName.includes('year')
     );
 
-    state.meta.isPro = true;
-    state.meta.isLifetime = isLifetimeLicense;
-    state.meta.isAnnual = isAnnualLicense;
-
-    await swSet({
-      state,
-      license: {
-        key: licenseKey,
-        instanceId: activateResult.instanceId || null,
-        activatedAt: Date.now(),
-        customerEmail: validateResult.meta?.customerEmail || null,
-        status: 'active',
-        isLifetime: isLifetimeLicense,
-        isAnnual: isAnnualLicense
-      }
+    await withLock(async () => {
+      const result = await swGet('state');
+      const state = result.state || getDefaultState();
+      state.meta.isPro = true;
+      state.meta.isLifetime = isLifetimeLicense;
+      state.meta.isAnnual = isAnnualLicense;
+      await swSet({
+        state,
+        license: {
+          key: licenseKey,
+          instanceId: activateResult.instanceId || null,
+          activatedAt: Date.now(),
+          customerEmail: validateResult.meta?.customerEmail || null,
+          status: 'active',
+          isLifetime: isLifetimeLicense,
+          isAnnual: isAnnualLicense
+        }
+      });
     });
 
     // Also update Convex tier if sync is configured
@@ -1653,14 +1716,16 @@ async function handleValidateLicense(sendResponse) {
       // License no longer valid - revoke all tier flags, not just isPro.
       // tier-system.js checks isLifetime/isAnnual before isPro, so leaving
       // those stale would let a lapsed license keep full access forever.
-      const stateResult = await swGet('state');
-      const state = stateResult.state || getDefaultState();
-      state.meta.isPro = false;
-      state.meta.isLifetime = false;
-      state.meta.isAnnual = false;
-      await swSet({
-        state,
-        license: { ...license, status: 'invalid' }
+      await withLock(async () => {
+        const stateResult = await swGet('state');
+        const state = stateResult.state || getDefaultState();
+        state.meta.isPro = false;
+        state.meta.isLifetime = false;
+        state.meta.isAnnual = false;
+        await swSet({
+          state,
+          license: { ...license, status: 'invalid' }
+        });
       });
 
       sendResponse({ success: true, valid: false, reason: result.error });
@@ -1685,14 +1750,16 @@ async function handleValidateLicense(sendResponse) {
     );
 
     // Re-confirm state flags are correct
-    const stateDataValid = await swGet('state');
-    const stateValid = stateDataValid.state || getDefaultState();
-    if (stateValid.meta) {
-      stateValid.meta.isPro = true;
-      stateValid.meta.isLifetime = isLifetimeCheck;
-      stateValid.meta.isAnnual = isAnnualCheck;
-      await swSet({ state: stateValid });
-    }
+    await withLock(async () => {
+      const stateDataValid = await swGet('state');
+      const stateValid = stateDataValid.state || getDefaultState();
+      if (stateValid.meta) {
+        stateValid.meta.isPro = true;
+        stateValid.meta.isLifetime = isLifetimeCheck;
+        stateValid.meta.isAnnual = isAnnualCheck;
+        await swSet({ state: stateValid });
+      }
+    });
 
     sendResponse({
       success: true,
@@ -1741,15 +1808,16 @@ async function handleDeactivateLicense(sendResponse) {
     }
 
     // Revoke Pro status
-    const stateResult = await swGet('state');
-    const state = stateResult.state || getDefaultState();
-    state.meta.isPro = false;
-    state.meta.isLifetime = false;
-    state.meta.isAnnual = false;
-
-    await swSet({
-      state,
-      license: null
+    await withLock(async () => {
+      const stateResult = await swGet('state');
+      const state = stateResult.state || getDefaultState();
+      state.meta.isPro = false;
+      state.meta.isLifetime = false;
+      state.meta.isAnnual = false;
+      await swSet({
+        state,
+        license: null
+      });
     });
 
     sendResponse({ success: true });
@@ -2312,12 +2380,22 @@ async function handleImportAssignments(message, sendResponse) {
       sendResponse({ success: false, error: 'Invalid import data' });
       return;
     }
-    const stateResult = await swGet('state');
-    const state = stateResult.state || getDefaultState();
-    if (!state.rules) state.rules = {};
-    // Merge — imported contacts are added without overwriting manually set ones
-    state.rules.contactMap = { ...data.contactMap, ...state.rules.contactMap };
-    await swSet({ state });
+    await withLock(async () => {
+      const stateResult = await swGet('state');
+      const state = stateResult.state || getDefaultState();
+      if (!state.rules) state.rules = {};
+      // Merge — imported contacts are added without overwriting manually set ones
+      state.rules.contactMap = { ...data.contactMap, ...state.rules.contactMap };
+      await swSet({ state });
+    });
+
+    // Same class of bug as assign/remove: without this, imported contacts
+    // write to storage correctly but any already-open WhatsApp tab keeps
+    // rendering from its stale in-memory contactMap.
+    chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, function(tabs) {
+      tabs.forEach(function(tab) { chrome.tabs.sendMessage(tab.id, { type: 'PHOTOS_UPDATED' }).catch(function() {}); });
+    });
+
     sendResponse({ success: true, count: Object.keys(data.contactMap).length });
   } catch(e) {
     sendResponse({ success: false, error: e.message });
