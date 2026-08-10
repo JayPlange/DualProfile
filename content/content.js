@@ -466,6 +466,13 @@
   let currentOverlayUrl = null;
   // Source of the current overlay: 'local' (contactMap) or 'p2p' (remote). null = no overlay.
   let currentOverlaySource = null;
+  // Bug A fix (2026-08-08): identity (phone || contactName) of the contact the
+  // header overlay is currently showing/preserving, used ONLY by
+  // applyHeaderOverlayForCurrentContact()'s unresolved-phone preserve guard so
+  // it can tell "same never-resolving contact, still legitimately preserving"
+  // apart from "different contact whose phone also hasn't resolved yet" — see
+  // that function for the full explanation.
+  let _overlayContactKey = null;
   // Monotonic generation counter — incremented on every phone change.
   // Async responses check this to abort if stale.
   let overlayGeneration = 0;
@@ -3606,18 +3613,40 @@ function applyHeaderOverlayForCurrentContact() {
       currentOverlaySource = 'p2p';
       Logger.info('[OVERLAY] Applied P2P for:', contactName, 'phone:', p2pPhone);
     }
+    _overlayContactKey = cacheKey;
     return;
   }
 
   // NO P2P photo found. Rules for cleanup:
-  // 1. If phone is UNRESOLVED (null) — do NOT touch the existing overlay.
-  //    earlyHeaderHijack may have correctly applied a photo; removing it would
-  //    wipe the right photo just because phone resolution hasn't completed yet.
+  // 1. If phone is UNRESOLVED (null) — do NOT touch the existing overlay,
+  //    PROVIDED it's still the same contact. earlyHeaderHijack may have
+  //    correctly applied a photo; removing it would wipe the right photo
+  //    just because phone resolution hasn't completed yet.
   // 2. If phone IS resolved but no P2P photo exists — remove stale overlay
   //    so the previous contact's photo doesn't bleed through (Bug 3).
+  //
+  // Bug A fix (2026-08-08, HANDOVER.md 1.5): rule 1 as originally written
+  // assumed "phone unresolved" is always temporary — a saved contact whose
+  // number just hasn't loaded into the DOM yet. For a contact whose phone
+  // NEVER resolves (unsaved, shown only by WhatsApp username), that
+  // assumption is false: every call for them hits this branch, so the
+  // overlay from whichever chat was open immediately before was preserved
+  // indefinitely, not briefly — the wrong contact's photo stuck permanently.
+  // Fix: only preserve when cacheKey (phone||contactName) matches the
+  // contact the overlay was last confirmed/preserved for. A different
+  // contact — even one that also never resolves a phone — must still get
+  // the stale overlay cleared, exactly like the resolved-phone case below.
   if (!phone && !p2pUrl) {
-    // Phone unknown — preserve whatever is currently shown
-    Logger.debug('[OVERLAY] Phone unresolved, preserving existing header state');
+    if (cacheKey && cacheKey === _overlayContactKey) {
+      Logger.debug('[OVERLAY] Phone unresolved, same contact as last overlay — preserving');
+      return;
+    }
+    Logger.debug('[OVERLAY] Phone unresolved but contact changed — clearing stale overlay');
+    removeDualProfileHeaderOverlay(headerEl);
+    currentOverlayPhone  = null;
+    currentOverlayUrl    = null;
+    currentOverlaySource = null;
+    _overlayContactKey   = cacheKey; // this contact now owns "no overlay"; a re-trigger for THEM still preserves while resolving
     return;
   }
 
@@ -3625,6 +3654,7 @@ function applyHeaderOverlayForCurrentContact() {
   removeDualProfileHeaderOverlay(headerEl);
   currentOverlayPhone  = null;
   currentOverlayUrl    = null;
+  _overlayContactKey   = cacheKey;
   currentOverlaySource = null;
   _lastHeaderPhone     = null;
   overlayGeneration++;
