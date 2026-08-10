@@ -1,5 +1,5 @@
 /**
- * DualProfile i18n — 8 languages
+ * DualProfile i18n — 9 languages
  * Stored in localStorage as 'dp_lang', defaults to 'en'
  */
 const DP_I18N = {
@@ -13,13 +13,13 @@ const DP_I18N = {
     works_on_web: 'Works on WhatsApp Web',
     two_minutes: '2 minutes to set up',
     show_me: 'Show me how',
-    pair_title: 'DualProfile works between two people.',
-    pair_sub: "When you assign someone a photo, they need DualProfile too — that\'s what makes it real, not a simulation. Send them the link now, before you finish setup.",
+    pair_title: 'Nobody complains about this. Everyone has it.',
+    pair_sub: "DualProfile switches your real WhatsApp photo by day and time. Visible everywhere, mobile included, one tap to confirm.",
+    pair_note: "Want per-contact photos too? Invite someone later, or enable it in Settings.",
     copy_link: '📎 Copy install link to send them',
     copied_msg: 'Copied — paste it in WhatsApp and keep going',
     p2p_reminder_msg: '{name} will see this once they install DualProfile too.',
     continue_setup: 'Continue setup',
-    invite_later: "I\'ll invite them later",
     upload_title: 'Upload your two photos.',
     upload_sub: 'One for work. One for everything else.',
     phone_title: 'Enter your WhatsApp number.',
@@ -101,8 +101,8 @@ const DP_I18N = {
     live_warn_detail: "Without your number, contacts see an Invite button instead of your photo, and real-time sync won\'t work.",
     live_fully_active: 'DualProfile fully active',
     live_partly_active: 'DualProfile partially active',
-    live_nudge: 'Need more than 2 contacts?',
-    live_upgrade: 'Upgrade to Pro →',
+    live_nudge: 'Got a big contact list?',
+    live_upgrade: 'Bulk assign with Pro →',
     live_network_title: 'Important — how DualProfile works',
     live_network_body: 'For a contact to see your assigned photo, they also need DualProfile installed. Once they do, your photo appears on their screen automatically — no extra steps.',
     live_copy_link: 'Copy install link to share',
@@ -351,13 +351,13 @@ const DP_I18N = {
     works_on_web: 'Funciona en WhatsApp Web',
     two_minutes: '2 minutos de configuración',
     show_me: 'Muéstrame cómo',
-    pair_title: 'DualProfile funciona entre dos personas.',
-    pair_sub: 'Cuando asignas una foto a alguien, ellos también necesitan DualProfile. Envíales el enlace ahora, antes de terminar la configuración.',
+    pair_title: 'Nadie se queja de esto. Todos lo tienen.',
+    pair_sub: 'DualProfile cambia tu foto real de WhatsApp por día y hora. Se ve en todas partes, incluido el móvil, con un toque para confirmar.',
+    pair_note: '¿Quieres fotos por contacto también? Invita a alguien más tarde, o actívalo en Ajustes.',
     copy_link: '📎 Copiar enlace de instalación',
     copied_msg: 'Copiado — pégalo en WhatsApp y continúa',
     p2p_reminder_msg: '{name} vera esto una vez que tambien instale DualProfile.',
     continue_setup: 'Continuar configuración',
-    invite_later: 'Lo invitaré más tarde',
     upload_title: 'Sube tus dos fotos.',
     upload_sub: 'Una para el trabajo. Una para todo lo demás.',
     phone_title: 'Ingresa tu número de WhatsApp.',
@@ -434,8 +434,8 @@ const DP_I18N = {
     live_warn_detail: 'Sin tu número, los contactos ven un botón Invitar en lugar de tu foto y la sincronización en tiempo real no funciona.',
     live_fully_active: 'DualProfile completamente activo',
     live_partly_active: 'DualProfile parcialmente activo',
-    live_nudge: '¿Necesitas más de 2 contactos?',
-    live_upgrade: 'Mejorar a Pro →',
+    live_nudge: '¿Tienes muchos contactos?',
+    live_upgrade: 'Asignación masiva con Pro →',
     live_network_title: 'Importante — cómo funciona DualProfile',
     live_network_body: 'Para que un contacto vea tu foto asignada, también necesita DualProfile instalado. Una vez que lo tenga, tu foto aparece en su pantalla automáticamente — sin pasos extra.',
     live_copy_link: 'Copiar enlace de instalación',
@@ -674,13 +674,13 @@ const DP_I18N = {
     works_on_web: '适用于WhatsApp Web',
     two_minutes: '2分钟设置',
     show_me: '告诉我怎么做',
-    pair_title: 'DualProfile在两人之间使用。',
-    pair_sub: '当你为某人分配照片时，他们也需要安装DualProfile。现在发送链接给他们，在完成设置之前。',
+    pair_title: '没人抱怨这个问题，但人人都有。',
+    pair_sub: 'DualProfile按日期和时间切换你的真实WhatsApp照片，所有设备都能看到，包括手机，一键确认。',
+    pair_note: '也想按联系人分配照片？以后邀请对方，或在"设置"中开启。',
     copy_link: '📎 复制安装链接',
     copied_msg: '已复制 — 粘贴到WhatsApp并继续',
     p2p_reminder_msg: '{name} 安装DualProfile后才能看到这张照片。',
     continue_setup: '继续设置',
-    invite_later: '稍后邀请',
     upload_title: '上传你的两张照片。',
     upload_sub: '一张用于工作，一张用于其他。',
     phone_title: '输入你的WhatsApp号码。',
@@ -757,8 +757,8 @@ const DP_I18N = {
     live_warn_detail: '没有号码，联系人会看到邀请按钮而不是你的照片，实时同步也无法工作。',
     live_fully_active: 'DualProfile完全激活',
     live_partly_active: 'DualProfile部分激活',
-    live_nudge: '需要超过2个联系人？',
-    live_upgrade: '升级到专业版 →',
+    live_nudge: '联系人很多？',
+    live_upgrade: 'Pro支持批量分配 →',
     live_network_title: '重要 — DualProfile的工作原理',
     live_network_body: '要让联系人看到你的指定照片，他们也需要安装DualProfile。一旦安装，你的照片会自动出现在他们的屏幕上 — 无需额外步骤。',
     live_copy_link: '复制安装链接分享',
@@ -989,13 +989,13 @@ const DP_I18N = {
     works_on_web: 'WhatsApp Webで動作',
     two_minutes: '設定2分',
     show_me: '使い方を見る',
-    pair_title: 'DualProfileは2人で使います。',
-    pair_sub: '連絡先に写真を割り当てると、相手もDualProfileが必要です。設定を終える前に、今すぐリンクを送ってください。',
+    pair_title: '誰も文句を言わない。でも、誰もが抱えている。',
+    pair_sub: 'DualProfileは曜日と時間で本当のWhatsApp写真を切り替えます。モバイルを含むすべての端末に表示され、ワンタップで確認できます。',
+    pair_note: '連絡先ごとの写真も使いたい場合は、後で招待するか「設定」でオンにできます。',
     copy_link: '📎 インストールリンクをコピー',
     copied_msg: 'コピーしました — WhatsAppに貼り付けて続けてください',
     p2p_reminder_msg: '{name}がDualProfileをインストールすると、この写真が表示されます。',
     continue_setup: 'セットアップを続ける',
-    invite_later: '後で招待する',
     upload_title: '2枚の写真をアップロードしてください。',
     upload_sub: '1枚は仕事用、もう1枚はプライベート用。',
     phone_title: 'WhatsAppの番号を入力してください。',
@@ -1072,8 +1072,8 @@ const DP_I18N = {
     live_warn_detail: '番号がないと、連絡先にはあなたの写真の代わりに招待ボタンが表示され、リアルタイム同期も機能しません。',
     live_fully_active: 'DualProfile完全有効',
     live_partly_active: 'DualProfile部分的に有効',
-    live_nudge: '2件以上の連絡先が必要ですか？',
-    live_upgrade: 'Proにアップグレード →',
+    live_nudge: '連絡先がたくさんありますか？',
+    live_upgrade: 'Proなら一括割り当て →',
     live_network_title: '重要 — DualProfileの仕組み',
     live_network_body: '連絡先があなたの割り当て写真を見るには、相手もDualProfileをインストールする必要があります。インストールすれば、写真は自動的に表示されます — 追加の手順は不要です。',
     live_copy_link: 'インストールリンクをコピー',
@@ -1306,13 +1306,13 @@ const DP_I18N = {
     works_on_web: 'Fonctionne sur WhatsApp Web',
     two_minutes: '2 minutes de configuration',
     show_me: 'Montrez-moi comment',
-    pair_title: 'DualProfile fonctionne entre deux personnes.',
-    pair_sub: "Quand vous assignez une photo à quelqu\'un, cette personne doit aussi avoir DualProfile. Envoyez-lui le lien maintenant.",
+    pair_title: "Personne ne s\'en plaint. Tout le monde l\'a.",
+    pair_sub: "DualProfile change votre vraie photo WhatsApp par jour et heure. Visible partout, mobile inclus, confirmée en un geste.",
+    pair_note: "Vous voulez aussi des photos par contact ? Invitez plus tard, ou activez-le dans les Paramètres.",
     copy_link: "📎 Copier le lien d\'installation",
     copied_msg: 'Copié — collez-le dans WhatsApp et continuez',
     p2p_reminder_msg: "{name} verra cette photo une fois qu'il ou elle aura aussi installe DualProfile.",
     continue_setup: 'Continuer la configuration',
-    invite_later: "Je l\'inviterai plus tard",
     upload_title: 'Téléchargez vos deux photos.',
     upload_sub: 'Une pour le travail. Une pour le reste.',
     phone_title: 'Entrez votre numéro WhatsApp.',
@@ -1389,8 +1389,8 @@ const DP_I18N = {
     live_warn_detail: 'Sans votre numéro, les contacts voient un bouton Inviter au lieu de votre photo et la synchronisation en temps réel ne fonctionne pas.',
     live_fully_active: 'DualProfile entièrement actif',
     live_partly_active: 'DualProfile partiellement actif',
-    live_nudge: 'Besoin de plus de 2 contacts ?',
-    live_upgrade: 'Passer à Pro →',
+    live_nudge: 'Beaucoup de contacts ?',
+    live_upgrade: 'Attribution groupée avec Pro →',
     live_network_title: 'Important — comment fonctionne DualProfile',
     live_network_body: "Pour qu\'un contact voie votre photo assignée, il doit aussi avoir DualProfile installé. Une fois installé, votre photo apparaît automatiquement sur son écran — sans étapes supplémentaires.",
     live_copy_link: "Copier le lien d\'installation",
@@ -1623,13 +1623,13 @@ const DP_I18N = {
     works_on_web: 'Funciona no WhatsApp Web',
     two_minutes: '2 minutos para configurar',
     show_me: 'Mostre-me como',
-    pair_title: 'DualProfile funciona entre duas pessoas.',
-    pair_sub: 'Quando você atribui uma foto a alguém, essa pessoa também precisa do DualProfile. Envie o link agora, antes de terminar a configuração.',
+    pair_title: 'Ninguém reclama disso. Todo mundo tem.',
+    pair_sub: 'O DualProfile troca sua foto real do WhatsApp por dia e hora. Visível em todo lugar, incluindo o celular, com um toque para confirmar.',
+    pair_note: 'Quer fotos por contato também? Convide alguém mais tarde, ou ative em Configurações.',
     copy_link: '📎 Copiar link de instalação',
     copied_msg: 'Copiado — cole no WhatsApp e continue',
     p2p_reminder_msg: '{name} vera esta foto assim que tambem instalar o DualProfile.',
     continue_setup: 'Continuar configuração',
-    invite_later: 'Vou convidar depois',
     upload_title: 'Envie suas duas fotos.',
     upload_sub: 'Uma para o trabalho. Uma para tudo o mais.',
     phone_title: 'Digite seu número do WhatsApp.',
@@ -1706,8 +1706,8 @@ const DP_I18N = {
     live_warn_detail: 'Sem seu número, os contatos veem um botão Convidar em vez da sua foto e a sincronização em tempo real não funciona.',
     live_fully_active: 'DualProfile totalmente ativo',
     live_partly_active: 'DualProfile parcialmente ativo',
-    live_nudge: 'Precisa de mais de 2 contatos?',
-    live_upgrade: 'Fazer upgrade para Pro →',
+    live_nudge: 'Muitos contatos?',
+    live_upgrade: 'Atribuição em massa com Pro →',
     live_network_title: 'Importante — como o DualProfile funciona',
     live_network_body: 'Para um contato ver sua foto atribuída, ele também precisa ter o DualProfile instalado. Uma vez instalado, sua foto aparece na tela dele automaticamente — sem passos extras.',
     live_copy_link: 'Copiar link de instalação',
@@ -1940,13 +1940,13 @@ const DP_I18N = {
     works_on_web: 'Funktioniert auf WhatsApp Web',
     two_minutes: '2 Minuten Einrichtung',
     show_me: 'Zeig mir wie',
-    pair_title: 'DualProfile funktioniert zwischen zwei Personen.',
-    pair_sub: 'Wenn du jemandem ein Foto zuweist, braucht diese Person auch DualProfile. Sende jetzt den Link, bevor du die Einrichtung abschließt.',
+    pair_title: 'Niemand beschwert sich. Jeder hat es.',
+    pair_sub: 'DualProfile wechselt dein echtes WhatsApp-Foto nach Tag und Uhrzeit. Überall sichtbar, auch mobil, mit einem Tippen bestätigt.',
+    pair_note: 'Willst du auch Fotos pro Kontakt? Lade später ein, oder aktiviere es in den Einstellungen.',
     copy_link: '📎 Installations-Link kopieren',
     copied_msg: 'Kopiert — füge es in WhatsApp ein und mache weiter',
     p2p_reminder_msg: '{name} sieht das Foto erst, wenn er oder sie DualProfile auch installiert hat.',
     continue_setup: 'Einrichtung fortsetzen',
-    invite_later: 'Ich lade später ein',
     upload_title: 'Lade deine zwei Fotos hoch.',
     upload_sub: 'Eines für die Arbeit. Eines für alles andere.',
     phone_title: 'Gib deine WhatsApp-Nummer ein.',
@@ -2023,8 +2023,8 @@ const DP_I18N = {
     live_warn_detail: 'Ohne deine Nummer sehen Kontakte einen Einladen-Button statt deines Fotos und die Echtzeit-Synchronisierung funktioniert nicht.',
     live_fully_active: 'DualProfile vollständig aktiv',
     live_partly_active: 'DualProfile teilweise aktiv',
-    live_nudge: 'Mehr als 2 Kontakte nötig?',
-    live_upgrade: 'Auf Pro upgraden →',
+    live_nudge: 'Viele Kontakte?',
+    live_upgrade: 'Massenzuweisung mit Pro →',
     live_network_title: 'Wichtig — so funktioniert DualProfile',
     live_network_body: 'Damit ein Kontakt dein zugewiesenes Foto sieht, muss er ebenfalls DualProfile installiert haben. Sobald er es hat, erscheint dein Foto automatisch auf seinem Bildschirm — ohne weitere Schritte.',
     live_copy_link: 'Installations-Link kopieren',
@@ -2257,13 +2257,13 @@ const DP_I18N = {
     works_on_web: 'WhatsApp Web पर काम करता है',
     two_minutes: '2 मिनट में सेटअप',
     show_me: 'मुझे दिखाएं',
-    pair_title: 'DualProfile दो लोगों के बीच काम करता है।',
-    pair_sub: 'जब आप किसी को फ़ोटो असाइन करते हैं, तो उन्हें भी DualProfile चाहिए। सेटअप पूरा करने से पहले अभी लिंक भेजें।',
+    pair_title: 'कोई शिकायत नहीं करता। लेकिन यह सबके पास है।',
+    pair_sub: 'DualProfile दिन और समय के अनुसार आपकी असली WhatsApp फ़ोटो बदलता है, हर जगह दिखे, मोबाइल सहित, एक टैप में कन्फर्म।',
+    pair_note: 'कॉन्टैक्ट के हिसाब से भी फ़ोटो चाहिए? बाद में इनवाइट करें, या सेटिंग्स में ऑन करें।',
     copy_link: '📎 इंस्टॉल लिंक कॉपी करें',
     copied_msg: 'कॉपी हो गया — WhatsApp में पेस्ट करें और आगे बढ़ें',
     p2p_reminder_msg: '{name} इसे तभी देख पाएंगे जब वे भी DualProfile इंस्टॉल करेंगे।',
     continue_setup: 'सेटअप जारी रखें',
-    invite_later: 'बाद में आमंत्रित करूँगा',
     upload_title: 'अपनी दो फ़ोटो अपलोड करें।',
     upload_sub: 'एक काम के लिए। एक बाकी सबके लिए।',
     phone_title: 'अपना WhatsApp नंबर दर्ज करें।',
@@ -2340,8 +2340,8 @@ const DP_I18N = {
     live_warn_detail: 'बिना नंबर के, संपर्क आपकी फ़ोटो की जगह आमंत्रित बटन देखते हैं और रियल-टाइम सिंक काम नहीं करता।',
     live_fully_active: 'DualProfile पूरी तरह सक्रिय',
     live_partly_active: 'DualProfile आंशिक रूप से सक्रिय',
-    live_nudge: '2 से ज़्यादा संपर्क चाहिए?',
-    live_upgrade: 'Pro में अपग्रेड करें →',
+    live_nudge: 'बहुत सारे कॉन्टैक्ट्स हैं?',
+    live_upgrade: 'Pro से बल्क असाइन करें →',
     live_network_title: 'ज़रूरी — DualProfile कैसे काम करता है',
     live_network_body: 'कोई संपर्क आपकी असाइन की गई फ़ोटो देखे, इसके लिए उन्हें भी DualProfile इंस्टॉल करना होगा। एक बार इंस्टॉल होते ही आपकी फ़ोटो उनकी स्क्रीन पर अपने आप दिखेगी — कोई अतिरिक्त कदम नहीं।',
     live_copy_link: 'इंस्टॉल लिंक कॉपी करें',
@@ -2574,13 +2574,13 @@ const DP_I18N = {
     works_on_web: 'Работает в WhatsApp Web',
     two_minutes: 'Настройка за 2 минуты',
     show_me: 'Показать как',
-    pair_title: 'DualProfile работает между двумя людьми.',
-    pair_sub: 'Когда вы назначаете кому-то фото, им тоже нужен DualProfile — иначе это лишь имитация. Отправьте им ссылку сейчас, до завершения настройки.',
+    pair_title: 'Никто не жалуется. Но это есть у всех.',
+    pair_sub: 'DualProfile переключает ваше настоящее фото WhatsApp по дням и времени. Видно везде, включая телефон, подтверждение одним нажатием.',
+    pair_note: 'Хотите фото по контактам тоже? Пригласите позже или включите в Настройках.',
     copy_link: '📎 Скопировать ссылку для установки',
     copied_msg: 'Скопировано — вставьте в WhatsApp и продолжайте',
     p2p_reminder_msg: '{name} увидит это фото, как только тоже установит DualProfile.',
     continue_setup: 'Продолжить настройку',
-    invite_later: 'Приглашу позже',
     upload_title: 'Загрузите два фото.',
     upload_sub: 'Одно для работы. Одно для всего остального.',
     phone_title: 'Введите номер WhatsApp.',
@@ -2657,8 +2657,8 @@ const DP_I18N = {
     live_warn_detail: 'Без номера контакты видят кнопку «Пригласить» вместо вашего фото, и синхронизация в реальном времени не работает.',
     live_fully_active: 'DualProfile полностью активен',
     live_partly_active: 'DualProfile частично активен',
-    live_nudge: 'Нужно больше 2 контактов?',
-    live_upgrade: 'Перейти на Pro →',
+    live_nudge: 'Много контактов?',
+    live_upgrade: 'Массовое назначение в Pro →',
     live_network_title: 'Важно — как работает DualProfile',
     live_network_body: 'Чтобы контакт увидел ваше назначенное фото, ему тоже нужно установить DualProfile. После установки ваше фото появится на его экране автоматически — никаких дополнительных шагов.',
     live_copy_link: 'Скопировать ссылку для установки',
@@ -2942,7 +2942,7 @@ function dpT(key) {
  * DualProfile Onboarding Flow — v1.0.3
  * Pair-first. Invite prompt surfaces at step 2, before any setup work.
  * Network effect communicated clearly and early.
- * i18n: 8 languages — EN, ES, ZH, JA, FR, PT, DE, HI
+ * i18n: 9 languages — EN, ES, ZH, JA, FR, PT, DE, HI, RU
  */
 
 class DualProfileOnboarding {
@@ -3183,38 +3183,21 @@ class DualProfileOnboarding {
   }
 
   // ─────────────────────────────────────────────────────────
-  // STEP 2 — The Problem: Make them feel it
+  // STEP 2 — Scheduled Photos: the immediate, solo win
   // ─────────────────────────────────────────────────────────
   renderPairPrompt(container) {
     container.innerHTML = `
       <div class="ob-step ob-problem">
         <h2 class="ob-title">${dpT('pair_title')}</h2>
         <p class="ob-sub">${dpT('pair_sub')}</p>
-        <div class="ob-pair-share">
-          <button class="ob-copy-link-btn" id="pairCopyLink" style="width:100%;margin-bottom:8px;">
-            ${dpT('copy_link')}
-          </button>
-          <div class="ob-copy-confirm hidden" id="pairCopyConfirm">
-            ${dpT('copied_msg')}
-          </div>
-        </div>
+        <p class="ob-note" style="opacity:1;">${dpT('pair_note')}</p>
         <button class="btn-promise" id="step2Next">
           ${dpT('continue_setup')} <span class="btn-arrow">→</span>
         </button>
-        <button class="ob-skip-link" id="step2Solo">${dpT('invite_later')}</button>
       </div>
     `;
 
-    container.querySelector('#pairCopyLink').addEventListener('click', () => {
-      const url = 'https://chromewebstore.google.com/detail/dualprofile/mdlhdncmaeepcejdbpnjpjlmagmmpkpc';
-      navigator.clipboard.writeText(url).catch(() => {});
-      const confirm = container.querySelector('#pairCopyConfirm');
-      confirm.classList.remove('hidden');
-      setTimeout(() => confirm.classList.add('hidden'), 4000);
-    });
-
     container.querySelector('#step2Next').addEventListener('click', () => this.renderStep(3));
-    container.querySelector('#step2Solo').addEventListener('click', () => this.renderStep(3));
   }
 
   // ─────────────────────────────────────────────────────────
