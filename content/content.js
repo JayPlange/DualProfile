@@ -5153,25 +5153,16 @@ function tryRenderHeader() {
       }
     }
 
-    // Tier 3: local contactMap (direct phone match — no P2P required)
-    if (!photoUrl && phone) {
-      var _localPhoto = state.rules && state.rules.contactMap && state.rules.contactMap[phone];
-      if (_localPhoto && state.photos && state.photos[_localPhoto]) {
-        photoUrl = state.photos[_localPhoto];
-      }
-    }
-    // Tier 4: local contactMap by normalized name
-    if (!photoUrl) {
-      var _normName = dpNormalizeName(name);
-      if (_normName && state.rules && state.rules.contactMap) {
-        // Try resolving name to phone via namePhoneCache then look up contactMap
-        var _namePhone = namePhoneCache && (namePhoneCache[nameLower] || namePhoneCache[_normName]);
-        if (_namePhone && state.rules.contactMap[_namePhone] && state.photos) {
-          var _lp = state.rules.contactMap[_namePhone];
-          if (state.photos[_lp]) photoUrl = state.photos[_lp];
-        }
-      }
-    }
+    // Tiers 3 & 4 (local contactMap, by phone and by name) removed —
+    // 2026-08-07: this function's own doc comment says "P2P only — never
+    // local assignments", but these two tiers fell back to the viewer's own
+    // outgoing assignment for a contact whenever no incoming P2P photo
+    // existed, showing publishers a preview of their own assignment on
+    // their own screen. Confirmed with Webb: a device must never show its
+    // own outgoing assignment back to itself, only real incoming P2P data,
+    // consistent with the sidebar (applyOverlayToRow) and header
+    // (applyHeaderOverlayForCurrentContact), neither of which ever used
+    // local data to begin with.
 
     // 5. Handle result
     if (!photoUrl || !isValidPhotoUrl(photoUrl)) {
@@ -6231,26 +6222,16 @@ function applyForwardModalItemOverlay(item) {
 
   var phone = namePhoneCache[name.toLowerCase()];
 
-  // FIX v9.5: check local assignments first (previously only P2P was checked).
-  // Contacts with locally assigned photos but no P2P exchange were silently skipped.
+  // Reverted 2026-08-07: v9.5 added local-assignment lookups (steps 1-3
+  // below, now removed) so a contact you'd assigned locally would still
+  // show something in the forward dialog even with no P2P exchange. That's
+  // exactly the behaviour Webb asked to remove everywhere — a device must
+  // never show its own outgoing assignment back to itself, only real
+  // incoming P2P data (what that contact assigned to show *you*).
   var assignedUrl = null;
 
-  // 1. Local assignment via phone key
+  // P2P remote photo (other DualProfile user's assigned photo)
   if (phone) {
-    var resolved = lookupResolvedContact(phone);
-    if (resolved && resolved.photoUrl) assignedUrl = resolved.photoUrl;
-  }
-  // 2. Local assignment via name key (contact saved by display name)
-  if (!assignedUrl) {
-    var resolvedByName = lookupResolvedContact(name);
-    if (resolvedByName && resolvedByName.photoUrl) assignedUrl = resolvedByName.photoUrl;
-  }
-  // 3. Full name resolution chain fallback
-  if (!assignedUrl) {
-    assignedUrl = getPhotoForContact(name) || null;
-  }
-  // 4. P2P remote photo (other DualProfile user's assigned photo)
-  if (!assignedUrl && phone) {
     var cached = p2pState.photoCache.get(phone);
     if (cached && cached.url) assignedUrl = cached.url;
   }
