@@ -168,9 +168,14 @@ export const attachPhone = mutation({
           .first();
         if (clash) {
           if (a.assignedAt > clash.assignedAt) {
+            // C3 FIX (2026-08-26): do not carry contactName across in this
+            // merge. This is a live, authenticated path (fires whenever a
+            // device attaches a phone number for an account that already
+            // exists), not a one-off migration -- if left as-is it would
+            // keep reintroducing plaintext names into rows that assignContact
+            // and scrubContactNames have already stopped writing/cleared.
             await ctx.db.patch(clash._id, {
               photoNumber: a.photoNumber,
-              contactName: a.contactName,
               assignedAt: a.assignedAt,
             });
           }

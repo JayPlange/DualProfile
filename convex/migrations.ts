@@ -133,9 +133,14 @@ export const mergeDuplicatePhoneHashUsers = mutation({
               .first();
             if (clash) {
               if (a.assignedAt > clash.assignedAt) {
+                // C3 FIX (2026-08-26): stop carrying contactName across on
+                // merge, same reasoning as the identical fix in
+                // users.ts's attachPhone. This migration is a one-off
+                // repair, but it's still exported and re-runnable, so a
+                // future run must not reintroduce a plaintext name onto a
+                // row assignContact/scrubContactNames have already cleaned.
                 await ctx.db.patch(clash._id, {
                   photoNumber: a.photoNumber,
-                  contactName: a.contactName,
                   assignedAt: a.assignedAt,
                 });
               }
@@ -250,6 +255,54 @@ export const promoteNewestPhotoPerSlot = mutation({
       dryRun: args.dryRun,
       slotsFixed: report.length,
       report,
+    };
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// scrubContactNames — C3 privacy fix cleanup.
+//
+// assignContact (convex/assignments.ts) used to store contactName in
+// plaintext on every assignments row. Combined with contactPhoneHash being
+// effectively reversible (phone numbers are a small enough space to
+// exhaustively hash -- this was never real anonymity), the server held a
+// number->name map for every user, contradicting the product's own privacy
+// positioning. That's fixed going forward as of 2026-08-26: contactName is
+// optional in the schema, assignContact never writes it (new or existing
+// rows), and getUserAssignments strips it from anything it returns.
+//
+// This migration is the other half: clearing the plaintext value out of
+// every row that already has one, left over from before the fix. Names
+// live entirely in chrome.storage.local client-side and are never read
+// back from Convex (checked repo-wide -- zero call sites), so clearing
+// this field breaks nothing on the client.
+//
+// USAGE — always dry-run first, read the report, then run for real:
+//   npx convex run migrations:scrubContactNames '{"dryRun": true}'
+//   npx convex run migrations:scrubContactNames '{"dryRun": false}'
+//
+// Safe to run more than once — once no row has a contactName left, it's a
+// no-op that reports zero scrubbed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const scrubContactNames = mutation({
+  args: { dryRun: v.boolean() },
+  handler: async (ctx, args) => {
+    const allAssignments = await ctx.db.query("assignments").collect();
+    const withName = allAssignments.filter(
+      (a) => a.contactName !== undefined && a.contactName !== null
+    );
+
+    if (!args.dryRun) {
+      for (const a of withName) {
+        await ctx.db.patch(a._id, { contactName: undefined });
+      }
+    }
+
+    return {
+      dryRun: args.dryRun,
+      rowsScrubbed: withName.length,
+      totalRows: allAssignments.length,
     };
   },
 });

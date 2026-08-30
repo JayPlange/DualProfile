@@ -66,7 +66,14 @@ export default defineSchema({
   assignments: defineTable({
     userId:           v.id("users"),
     contactPhoneHash: v.string(),
-    contactName:      v.string(),
+    // C3 FIX (2026-08-26): optional, not required, and no longer written by
+    // assignContact (see convex/assignments.ts). Existing rows created
+    // before this fix still carry a plaintext value here until
+    // migrations.ts's scrubContactNames clears them -- kept optional rather
+    // than removed outright so those old rows still pass Convex's schema
+    // validation on deploy (same reasoning as the legacy deviceToken field
+    // on the users table above).
+    contactName:      v.optional(v.string()),
     photoNumber:      v.number(),
     assignedAt:       v.number(),
   })
