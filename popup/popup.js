@@ -1043,8 +1043,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const hasAssignments = countRealContacts(contactMap) > 0;
       if (hasAssignments) {
         showP2PHealthBanner(
-          'P2P Sync is registered but not active in this WhatsApp session. Refresh WhatsApp Web to reactivate it.',
-          'How to refresh',
+          dpT('p2p_health_banner_msg'),
+          dpT('p2p_health_banner_action'),
           () => showRefreshTip()
         );
         return;
@@ -1488,7 +1488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const badge = elements.syncStatusBadge;
 
     if (statusEl) {
-      statusEl.textContent = '\u2713 Number saved! P2P sync is now active.';
+      statusEl.textContent = dpT('number_saved');
       statusEl.className = 'phone-status-message success';
       statusEl.style.display = 'block';
     }
@@ -2126,7 +2126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Was: branched on 'lifetime' | 'annual' | 'pro' with three different
     // titles/taglines/badges. Round-1 pricing reuses the old Lifetime Lemon
     // Squeezy variant UUID (see lib/config.js), so `tier` still resolves to
-    // 'lifetime' for every new £29 Pro purchase, not just legacy buyers.
+    // 'lifetime' for every new £9.99 Pro purchase, not just legacy buyers.
     // Left as-is, every new customer's purchase-confirmation moment read
     // "Welcome, Lifetime Member." — a retired product name, on the one screen
     // a paying customer is guaranteed to see. There is one paid tier now;
@@ -2600,7 +2600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // One paid tier. Legacy keys retained so an un-updated call site that
     // still passes 'annual' or 'lifetime' shows the correct price, not blank.
-    const proPrice  = '£29<span>/one-time</span>';
+    const proPrice  = '£9.99<span>/one-time</span>';
     const tierPrice = { pro: proPrice, annual: proPrice, lifetime: proPrice };
 
     const modal = document.createElement('div');
@@ -2711,7 +2711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Buy button → opens Lemon Squeezy checkout in new tab.
       // Annual and Lifetime buttons removed: there is one paid tier now, and
       // showing two or three price options that all silently redirected to
-      // the same £29 checkout (see lib/config.js legacy shims) was actively
+      // the same £9.99 checkout (see lib/config.js legacy shims) was actively
       // misleading, not just stale-looking.
       const buyBtn = modal.querySelector('#buyProBtn');
       if (buyBtn) {
