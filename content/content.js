@@ -2998,6 +2998,13 @@ function extractContactAvatar(item) {
  */
 async function getPhoneMapFromIndexedDB() {
   const phoneMap = new Map();
+  // Names seen in the primary contact store that did NOT yield a phone —
+  // almost always because that row's JID is @lid (WhatsApp's linked-device
+  // ID, not a real number), not because the contact lacks one. Tracked so
+  // Phase B can still run for these specific contacts even when the account
+  // already has plenty of real @c.us contacts elsewhere (see the gating fix
+  // below — this was previously invisible whenever phoneMap.size reached 3).
+  const unresolvedNames = new Set();
 
   // ── Helper: extract a real phone number from a WhatsApp IDB row ─────────
   // WhatsApp stores contacts both as @c.us (real phone) and @lid (linked device ID).
@@ -3052,16 +3059,32 @@ async function getPhoneMapFromIndexedDB() {
         for (const row of rows) {
           const phone = extractPhoneFromRow(row);
           const name = extractNameFromRow(row);
-          if (phone && name) phoneMap.set(name.trim().toLowerCase(), normalizePhone(phone) || phone);
+          if (phone && name) {
+            phoneMap.set(name.trim().toLowerCase(), normalizePhone(phone) || phone);
+          } else if (name) {
+            // Row exists (this is a real contact) but extractPhoneFromRow
+            // rejected it — almost always @lid. Flag for Phase B below.
+            unresolvedNames.add(name.trim().toLowerCase());
+          }
         }
-        Logger.info('[IDB] After contact store:', phoneMap.size, 'entries');
+        Logger.info('[IDB] After contact store:', phoneMap.size, 'entries,', unresolvedNames.size, 'unresolved (likely @lid)');
       }
 
       // ── Phase B: chat store fallback ─────────────────────────────────────
       // WhatsApp's LID migration means many accounts have ONLY @lid entries in the
       // contact store. The chat/conversation store still records @c.us JIDs for
       // individual conversations — it's a reliable secondary source for phone numbers.
-      if (phoneMap.size < 3) {
+      //
+      // BUG FIX (2026-08-31): this used to be gated solely on `phoneMap.size < 3`,
+      // a global count. That meant once an account had 3+ real @c.us contacts —
+      // true for almost any active WhatsApp user — this fallback never ran again,
+      // so ANY individual contact whose primary store entry is @lid-only (a
+      // per-contact WhatsApp migration state, unrelated to how many other real
+      // contacts exist) was silently unresolvable forever: no phone, no badge,
+      // "Invite" shown even though that person genuinely has DualProfile
+      // installed. Now also runs whenever Phase A flagged at least one specific
+      // unresolved name, regardless of the global count.
+      if (phoneMap.size < 3 || unresolvedNames.size > 0) {
         const chatStore = storeNames.find(s =>
           s === 'chat' || s === 'chats' || s === 'conversation' || s === 'conversations'
         );
