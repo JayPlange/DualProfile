@@ -3039,6 +3039,7 @@ async function getPhoneMapFromIndexedDB() {
   // for someone who genuinely has DualProfile installed. setPhone() below
   // detects the conflict and drops the name entirely rather than guessing.
   const ambiguousNames = new Set();
+  let _persistedCacheDirty = false;
   function setPhone(name, phone) {
     const key = name.trim().toLowerCase();
     if (ambiguousNames.has(key)) return; // already known unsafe, stay dropped
@@ -3047,6 +3048,25 @@ async function getPhoneMapFromIndexedDB() {
       phoneMap.delete(key);
       ambiguousNames.add(key);
       Logger.warn('[IDB] Ambiguous name "' + key + '": multiple different phone numbers share this display name — dropping name-based mapping for it.');
+      // BUG FIX (2026-08-31, round 2): this function's own phoneMap is a
+      // fresh local Map, rebuilt from scratch every call — but namePhoneCache
+      // (declared far above, shared across the whole content script) is
+      // loaded from chrome.storage.local ONCE at startup and persisted back
+      // to disk. If a PAST scan (before this collision guard existed) already
+      // wrote the wrong phone for this name to namePhoneCache, it sits there
+      // silently forever — every future scan's Phase 0 merge (below, in
+      // scanWhatsAppContacts) only ever ADDS new entries or skips conflicting
+      // NEW ones, it never goes back and cleans an existing bad one. Confirmed
+      // live: this was still poisoning real assignments after the first
+      // version of this guard shipped, because the guard stopped the poison
+      // from being written fresh but never removed what was already there.
+      // Purging it here, the moment the same collision is re-detected, means
+      // one scan self-heals the persisted cache instead of requiring a manual
+      // reset.
+      if (namePhoneCache[key] !== undefined) {
+        delete namePhoneCache[key];
+        _persistedCacheDirty = true;
+      }
       return;
     }
     phoneMap.set(key, phone);
@@ -3174,6 +3194,7 @@ async function getPhoneMapFromIndexedDB() {
 
       if (phoneMap.size > 0) {
         Logger.info('[IDB] Total extracted:', phoneMap.size, 'name->phone mappings from', dbName);
+        if (_persistedCacheDirty) { saveNamePhoneCache(); Logger.info('[IDB] Purged', ambiguousNames.size, 'ambiguous name(s) from persisted namePhoneCache:', [...ambiguousNames].join(', ')); }
         return phoneMap;
       }
     } catch (e) {
@@ -3181,6 +3202,7 @@ async function getPhoneMapFromIndexedDB() {
     }
   }
 
+  if (_persistedCacheDirty) { saveNamePhoneCache(); Logger.info('[IDB] Purged', ambiguousNames.size, 'ambiguous name(s) from persisted namePhoneCache:', [...ambiguousNames].join(', ')); }
   return phoneMap;
 }
 
