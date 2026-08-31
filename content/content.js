@@ -3029,6 +3029,29 @@ async function getPhoneMapFromIndexedDB() {
       || row.formattedName || row.notify || null;
   }
 
+  // BUG FIX (2026-08-31): two different real contacts can legitimately share
+  // a display name (e.g. two people both saved locally as "Nana Yaw") —
+  // confirmed live via IndexedDB dump showing 233509764406 and 233530930303
+  // both stored under the name "Nana Yaw". phoneMap.set() alone silently lets
+  // whichever row is processed last overwrite the correct mapping with a
+  // stranger's phone number — worse than no mapping at all, since it makes
+  // the badge check query the WRONG hash and confidently report "not a user"
+  // for someone who genuinely has DualProfile installed. setPhone() below
+  // detects the conflict and drops the name entirely rather than guessing.
+  const ambiguousNames = new Set();
+  function setPhone(name, phone) {
+    const key = name.trim().toLowerCase();
+    if (ambiguousNames.has(key)) return; // already known unsafe, stay dropped
+    const existing = phoneMap.get(key);
+    if (existing !== undefined && existing !== phone) {
+      phoneMap.delete(key);
+      ambiguousNames.add(key);
+      Logger.warn('[IDB] Ambiguous name "' + key + '": multiple different phone numbers share this display name — dropping name-based mapping for it.');
+      return;
+    }
+    phoneMap.set(key, phone);
+  }
+
   // ── Try each known WhatsApp IDB database name ────────────────────────────
   const dbNames = ['model-storage', 'wawc'];
 
@@ -3060,7 +3083,7 @@ async function getPhoneMapFromIndexedDB() {
           const phone = extractPhoneFromRow(row);
           const name = extractNameFromRow(row);
           if (phone && name) {
-            phoneMap.set(name.trim().toLowerCase(), normalizePhone(phone) || phone);
+            setPhone(name, normalizePhone(phone) || phone);
           } else if (name) {
             // Row exists (this is a real contact) but extractPhoneFromRow
             // rejected it — almost always @lid. Flag for Phase B below.
@@ -3102,8 +3125,9 @@ async function getPhoneMapFromIndexedDB() {
             // Chat display name: name > formattedTitle > displayName > pushname
             const name = row.name || row.formattedTitle || row.displayName
               || row.pushname || row.verifiedName || null;
-            if (name) phoneMap.set(name.trim().toLowerCase(), normalizePhone(phone) || phone);
-            // Also add the raw phone as a key (catches number-only display names)
+            if (name) setPhone(name, normalizePhone(phone) || phone);
+            // Also add the raw phone as a key (catches number-only display names).
+            // Phone-keyed, not name-keyed, so it can't collide the same way.
             phoneMap.set(phone, normalizePhone(phone) || phone);
           }
           Logger.info('[IDB] After chat store:', phoneMap.size, 'entries');
@@ -3134,7 +3158,7 @@ async function getPhoneMapFromIndexedDB() {
                 if (rawPhone.length < 7 || rawPhone.length > 15) continue;
                 const pushname = row.pushName || row.notifyName || row.senderName || null;
                 if (pushname) {
-                  phoneMap.set(pushname.trim().toLowerCase(), normalizePhone(rawPhone) || rawPhone);
+                  setPhone(pushname, normalizePhone(rawPhone) || rawPhone);
                 }
                 phoneMap.set(rawPhone, normalizePhone(rawPhone) || rawPhone);
               }
