@@ -91,11 +91,9 @@ Rather than a single "isPro" flag, `lib/tier-system.js` exposes individual flags
 | Tier | Contacts | Price | Includes |
 |---|---|---|---|
 | Free | 1 | £0 | Manual assignment |
-| Pro | Unlimited | £9.99/mo | + Photo History & Revert |
-| Annual | Unlimited | £59/yr | + Bulk Assignment, Scheduled Photos |
-| Lifetime | Unlimited | £79 one-time | + Export/Import, Multi-Device Sync, Priority Support, all future features |
+| Pro | Unlimited | £9.99 one-time | Photo History & Revert, Bulk Assignment, Scheduled Photos, Export/Import, Multi-Device Sync, Priority Support |
 
-Each tier includes everything in the tier above it. Enforcement is per-feature (see `lib/tier-system.js`), driven by Lemon Squeezy webhook metadata (`isPro` / `isAnnual` / `isLifetime`).
+Collapsed from an earlier four-tier structure (Free/Pro/Annual/Lifetime) after data showed the middle tiers weren't converting. Pro was repriced from £29 to £9.99, reusing the existing Lemon Squeezy Lifetime variant rather than creating a new one, so the webhook mapping and existing customers' entitlement stayed untouched. Annual and Lifetime are no longer sold, but kept as legacy values in `lib/tier-system.js` — anyone who bought one previously keeps full (Pro-equivalent) access. Enforcement is per-feature, not per-plan, and happens in the same Convex mutation that writes the assignment, not the client.
 
 ---
 
