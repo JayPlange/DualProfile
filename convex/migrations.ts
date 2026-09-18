@@ -1,5 +1,16 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+
+// SECURITY (2026-09-05): these three migrations were previously declared as
+// plain `mutation()`, meaning they were public HTTP-callable endpoints with
+// no auth check at all — anyone with the (public, extension-shipped) Convex
+// deployment URL could invoke them directly, including for real (dryRun:
+// false), and mergeDuplicatePhoneHashUsers/scrubContactNames mutate or
+// delete data for every user in the table with no ownership scoping.
+// Changed to internalMutation: still fully runnable via
+// `npx convex run migrations:<name> '{"dryRun": ...}'` from the CLI/dashboard
+// (internal functions are callable from the CLI, just not over the public
+// client API), but no longer reachable by an external caller.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // migrations.ts — one-off repair for the 1.0.27 device-auth rollout.
@@ -29,7 +40,7 @@ import { v } from "convex/values";
 // one live user row, it's a no-op that reports zero merges.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const mergeDuplicatePhoneHashUsers = mutation({
+export const mergeDuplicatePhoneHashUsers = internalMutation({
   args: { dryRun: v.boolean() },
   handler: async (ctx, args) => {
     const allUsers = await ctx.db.query("users").collect();
@@ -204,7 +215,7 @@ export const mergeDuplicatePhoneHashUsers = mutation({
 // newest one, it's a no-op.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const promoteNewestPhotoPerSlot = mutation({
+export const promoteNewestPhotoPerSlot = internalMutation({
   args: { dryRun: v.boolean() },
   handler: async (ctx, args) => {
     const allPhotos = await ctx.db.query("photos").collect();
@@ -285,7 +296,7 @@ export const promoteNewestPhotoPerSlot = mutation({
 // no-op that reports zero scrubbed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const scrubContactNames = mutation({
+export const scrubContactNames = internalMutation({
   args: { dryRun: v.boolean() },
   handler: async (ctx, args) => {
     const allAssignments = await ctx.db.query("assignments").collect();
