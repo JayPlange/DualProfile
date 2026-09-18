@@ -60,7 +60,23 @@ export const assignContact = mutation({
   args: {
     ...authArgs,
     contactPhoneHash: v.string(),
-    contactName:      v.string(),
+    // C3 FIX (2026-08-26): contactName removed from the accepted/persisted
+    // shape. It used to be stored here in plaintext, which, combined with
+    // the hash being effectively reversible (phone numbers are a small
+    // enough space to exhaustively hash — this was never real anonymity),
+    // meant the server held a number->name map for every user. That
+    // contradicted the product's own privacy positioning. The server never
+    // needed this field: getPhotoForViewer matches on hash, not name. Kept
+    // as an OPTIONAL arg, not removed outright, so an already-installed
+    // client running an older extension version that still sends it does
+    // not get a hard validation error mid-rollout — the value is simply
+    // ignored and never reaches ctx.db. Names now live entirely in
+    // chrome.storage.local (see lib/sync-manager.js's syncAssignment
+    // docstring and popup.js's contactMap) and never round-trip to the
+    // server. Existing rows with a plaintext contactName from before this
+    // fix are handled by migrations.ts's scrubContactNames, run manually,
+    // dry-run first, same pattern as this file's other migrations.
+    contactName:      v.optional(v.string()),
     photoNumber:      v.number(),
   },
   handler: async (ctx, args) => {
@@ -70,18 +86,9 @@ export const assignContact = mutation({
     if (args.photoNumber !== 1 && args.photoNumber !== 2) {
       throw new Error("Invalid photoNumber — must be 1 or 2");
     }
-    if (!args.contactName || args.contactName.length > 100) {
-      throw new Error("contactName must be 1–100 characters");
-    }
     if (!/^[0-9a-f]{64}$/.test(args.contactPhoneHash)) {
       throw new Error("INVALID_PHONE_HASH");
     }
-
-    // NOTE FOR C3: contactName is stored here in plaintext. Combined with the
-    // hash being effectively reversible, the server holds a number->name map
-    // for every user — which contradicts the privacy positioning directly.
-    // The server does not need this field: getPhotoForViewer matches on hash.
-    // Move it to chrome.storage.local when you do C3.
 
     const effectiveTier = getEffectiveTier(user);
 
@@ -106,16 +113,21 @@ export const assignContact = mutation({
       .first();
 
     if (existing) {
+      // Deliberately never writes contactName here, even if args.contactName
+      // is present (an older client still sending it). An existing row that
+      // already carries a plaintext name from before this fix keeps it until
+      // migrations.ts's scrubContactNames clears it -- this patch just never
+      // adds a NEW one and never refreshes an old one to a newer value.
       await ctx.db.patch(existing._id, {
         photoNumber: args.photoNumber,
-        contactName: args.contactName,
         assignedAt:  Date.now(),
       });
     } else {
+      // No contactName field at all on new rows -- see this mutation's args
+      // comment above for why.
       await ctx.db.insert("assignments", {
         userId,
         contactPhoneHash: args.contactPhoneHash,
-        contactName:      args.contactName,
         photoNumber:      args.photoNumber,
         assignedAt:       Date.now(),
       });
@@ -203,10 +215,17 @@ export const getUserAssignments = query({
   args: { ...authArgs },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.deviceToken);
-    return await ctx.db
+    const rows = await ctx.db
       .query("assignments")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
+    // Defense in depth: strip contactName even though nothing in the
+    // extension currently calls this query (checked repo-wide, 2026-08-26 --
+    // zero call sites). Some existing rows still carry a plaintext name from
+    // before the C3 fix above; there's no reason for any future consumer of
+    // this endpoint to receive it just because the row happens to still
+    // have it.
+    return rows.map(({ contactName, ...rest }) => rest);
   },
 });
 

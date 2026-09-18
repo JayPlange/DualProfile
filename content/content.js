@@ -216,7 +216,7 @@
       // React can reset img.src forever; it cannot touch our div.
       var container = img.parentElement;
       if (!container) return false;
-      if (container.style.position === 'static' || !container.style.position) {
+      if (getComputedStyle(container).position === 'static') {
         container.style.position = 'relative';
       }
       img.style.opacity = '0'; // hide without breaking React layout
@@ -343,7 +343,12 @@
       if (_dpStrategyCache) console.log('strategy cache:', JSON.stringify({strategy:_dpStrategyCache.strategy, age: Date.now()-_dpStrategyCache.ts+'ms', phone:_dpStrategyCache.phone?.slice(0,6)+'***'}));
       console.log('getContactNameFromHeader() ->', getContactNameFromHeader());
       console.groupEnd();
-      return { overlay, phone, contactMap, p2pEnabled: p2pState.enabled };
+      return {
+        overlay, phone, contactMap, p2pEnabled: p2pState.enabled,
+        p2pPhotoCacheSize: p2pState.photoCache.size,
+        p2pKnownPhones: [...p2pState.knownPhones].map(p => p.slice(0,6)+'***'),
+        p2pPhotoCachePhones: [...p2pState.photoCache.keys()].map(p => p.slice(0,6)+'***')
+      };
     },
 
     getState: () => ({
@@ -742,6 +747,16 @@
   let overlayGeneration = 0;
   // Name → phone cache (persisted, built incrementally from sidebar scans and P2P extractions)
   let namePhoneCache = {};
+  // Display names confirmed to be shared by 2+ real contacts with different
+  // phone numbers (e.g. two people both saved as "Nana Yaw"). Once a name is
+  // in here, no write site is allowed to (re)populate namePhoneCache for it —
+  // every lookup must fall through to a phone-based resolver instead. This
+  // set is shared module state (not local to one function) specifically so a
+  // collision detected by any one write path protects every other one.
+  const ambiguousNames = new Set();
+  // Set true whenever cacheNamePhone() purges a name; read by callers that
+  // batch several writes and want to persist once at the end.
+  let _persistedCacheDirty = false;
   // Active P2P overlay monitors (key: locationName, value: { observer, photoUrl })
   const p2pOverlayMonitors = new Map();
 
@@ -957,6 +972,55 @@
     } catch (e) {
       Logger.warn('[CACHE] Failed to save namePhoneCache:', e.message);
     }
+  }
+
+  /**
+   * Single guarded entry point for writing namePhoneCache. Every write site
+   * in this file must go through this function instead of assigning to
+   * namePhoneCache directly.
+   *
+   * BUG FIX (2026-09-08): namePhoneCache had six write sites; only one (the
+   * IndexedDB bulk-scan merge) checked for a name mapping to two different
+   * phone numbers. The other five wrote "if not already cached, cache it" or
+   * even unconditionally overwrote, with no collision check at all. Since
+   * WhatsApp display names are not unique, whichever contact sharing a name
+   * was scanned or opened FIRST silently won that name for every other
+   * contact sharing it, in every function that reads namePhoneCache
+   * (tryRenderHeader, getPhotoForContact, applyOverlayToRow, etc.) — showing
+   * one contact's assigned/received photo on a completely different
+   * contact's avatar. Deterministic given a fixed DOM scan order, which is
+   * why a page refresh alone did not clear it.
+   *
+   * Returns true if the mapping is now cached (either newly, or already
+   * correct), false if the name is unsafe to use (ambiguous) and the caller
+   * should NOT treat this as a successful cache write (no tryRenderHeader()
+   * retrigger, no assuming the name is now resolvable).
+   */
+  function cacheNamePhone(rawName, rawPhone) {
+    if (!rawName || !rawPhone) return false;
+    const key = rawName.trim().toLowerCase();
+    if (!key) return false;
+    const phone = normalizePhone(rawPhone) || rawPhone;
+
+    if (ambiguousNames.has(key)) return false; // already known unsafe, stay dropped
+
+    const existing = namePhoneCache[key];
+    if (existing === phone) return true; // already correct, no-op
+    if (existing !== undefined && existing !== phone) {
+      // Collision: two different phone numbers claim the same display name.
+      // Drop the mapping entirely rather than guess which one is "right" —
+      // a wrong guess here is worse than no mapping, it puts one contact's
+      // photo on another contact's avatar.
+      delete namePhoneCache[key];
+      ambiguousNames.add(key);
+      _persistedCacheDirty = true;
+      Logger.warn('[CACHE] Ambiguous name "' + key + '": multiple different phone numbers share this display name — dropping name-based mapping for it, future lookups must resolve by phone instead.');
+      saveNamePhoneCache();
+      return false;
+    }
+
+    namePhoneCache[key] = phone;
+    return true;
   }
   /**
   * Strip WhatsApp's true_/false_ prefix from data-id phone values.
@@ -1449,8 +1513,7 @@ async function init() {
             if (seenPhones[c.phone]) return;
             seenPhones[c.phone] = true;
             dedupedPhones.push(c.phone);
-            namePhoneCache[c.name.trim().toLowerCase()] = c.phone;
-            tryRenderHeader();
+            if (cacheNamePhone(c.name, c.phone)) tryRenderHeader();
           });
           if (!dedupedPhones.length) return;
           chrome.runtime.sendMessage({ type: 'CHECK_CONTACTS_EXIST', phoneNumbers: dedupedPhones }, function(resp) {
@@ -3038,8 +3101,12 @@ async function getPhoneMapFromIndexedDB() {
   // the badge check query the WRONG hash and confidently report "not a user"
   // for someone who genuinely has DualProfile installed. setPhone() below
   // detects the conflict and drops the name entirely rather than guessing.
-  const ambiguousNames = new Set();
-  let _persistedCacheDirty = false;
+  //
+  // ambiguousNames and _persistedCacheDirty are shared module state (see
+  // cacheNamePhone() near namePhoneCache's declaration) — deliberately NOT
+  // redeclared here, so a collision found during this IndexedDB scan also
+  // protects the other five namePhoneCache write sites (sidebar scan,
+  // chat-open handler, P2P restore) from re-poisoning the same name after.
   function setPhone(name, phone) {
     const key = name.trim().toLowerCase();
     if (ambiguousNames.has(key)) return; // already known unsafe, stay dropped
@@ -3329,12 +3396,11 @@ async function scanWhatsAppContacts() {
       // so bulkPhoneMap only contains verified @c.us phone numbers.
       let added = 0, skipped = 0;
       for (const [name, phone] of bulkPhoneMap) {
-        if (namePhoneCache[name] && namePhoneCache[name] !== phone) {
-          skipped++;
-        } else if (!namePhoneCache[name]) {
-          namePhoneCache[name] = phone;
+        if (cacheNamePhone(name, phone)) {
           added++;
           tryRenderHeader();
+        } else {
+          skipped++;
         }
       }
       Logger.info('[SCAN] Phase 0 merge: added', added, ', skipped (conflicts)', skipped);
@@ -3482,9 +3548,7 @@ async function scanWhatsAppContacts() {
             Logger.debug('[SCAN] LID contact (no phone resolved):', name, '— phone resolution depends on IDB/cache');
           }
         }
-        if (phone) {
-          phone = normalizePhone(phone) || phone;
-          namePhoneCache[name.trim().toLowerCase()] = phone;
+        if (phone && cacheNamePhone(name, phone)) {
           tryRenderHeader();
         }
       }
@@ -3534,11 +3598,13 @@ async function scanWhatsAppContacts() {
           await new Promise(r => setTimeout(r, 600));
 
           const phone = extractPhoneFromActiveChat();
-          if (phone) {
+          if (phone && cacheNamePhone(contact.name, phone)) {
             contact.phone = phone;
-            namePhoneCache[contact.name.trim().toLowerCase()] = phone;
             tryRenderHeader();
             Logger.info('[SCAN] Phone via click for', contact.name, ':', phone);
+          } else if (phone) {
+            contact.phone = phone; // resolved, but name is ambiguous — keep on the contact object, just don't poison namePhoneCache
+            Logger.warn('[SCAN] Phone resolved but name is ambiguous, not caching by name:', contact.name);
           } else {
             Logger.warn('[SCAN] Click extraction failed for', contact.name);
           }
@@ -4179,8 +4245,7 @@ async function initP2PSync() {
       var contactNames = data.p2pContactNames || {};
       for (var cPhone in contactNames) {
         var cName = contactNames[cPhone];
-        if (cName && !namePhoneCache[cName.toLowerCase()]) {
-          namePhoneCache[cName.toLowerCase()] = cPhone;
+        if (cName && cacheNamePhone(cName, cPhone)) {
           tryRenderHeader();
           Logger.info('[P2P-INIT] Restored namePhoneCache:', cName, '→', cPhone);
         }
@@ -4889,9 +4954,7 @@ async function checkP2PPhoto() {
 
   // Cache the name→phone mapping
   if (state.currentContact && phone) {
-    const cacheKey = state.currentContact.toLowerCase();
-    if (!namePhoneCache[cacheKey]) {
-      namePhoneCache[cacheKey] = phone;
+    if (cacheNamePhone(state.currentContact, phone)) {
       tryRenderHeader();
       saveNamePhoneCache();
       Logger.info('[P2P-CHECK] Cached name→phone:', state.currentContact, '→', phone);
@@ -5120,31 +5183,50 @@ var _dpRafExpiry = 0;
 function findHeaderAvatarContainer(headerEl) {
   if (!headerEl) return null;
   // Strategy 1: explicit size container (style="height:40px;width:40px")
+  // 2026-09: also matches a bare <svg> letter-avatar (no img/image tag) —
+  // same WhatsApp Web change that broke sidebar avatar detection. The
+  // overlay div covers the container by absolute position (inset:0) so it
+  // doesn't need a real img/image underneath, just the right-sized wrapper.
   var sizedDivs = headerEl.querySelectorAll('div[style*="height"]');
   for (var i = 0; i < sizedDivs.length; i++) {
     var d = sizedDivs[i];
     var w = d.offsetWidth, h = d.offsetHeight;
-    if (w >= 30 && w <= 70 && h >= 30 && h <= 70 && d.querySelector('img, image')) {
+    if (w >= 30 && w <= 70 && h >= 30 && h <= 70 && d.querySelector('img, image, svg')) {
       return d;
     }
   }
-  // Strategy 2: direct parent of avatar img
+  // Strategy 2: direct parent of avatar img/svg
   var img = findHeaderAvatarImg(headerEl);
   return img ? img.parentElement : null;
 }
 
 /**
- * Find the native avatar img inside a header element.
+ * Find the native avatar img (or letter-avatar svg) inside a header element.
  * @param {HTMLElement} headerEl
- * @returns {HTMLImageElement|null}
+ * @returns {HTMLImageElement|SVGElement|null}
  */
 function findHeaderAvatarImg(headerEl) {
   if (!headerEl) return null;
-  var imgs = headerEl.querySelectorAll('img, image');
+  var headerRect = headerEl.getBoundingClientRect();
+  function isLeftAligned(rect) { return (rect.left - headerRect.left) <= 60; }
+  var imgs = headerEl.querySelectorAll('img, image, svg');
   for (var i = 0; i < imgs.length; i++) {
     var img = imgs[i];
-    var w = img.offsetWidth, h = img.offsetHeight;
-    if (w >= 25 && w <= 70 && h >= 25 && h <= 70) return img;
+    var w, h;
+    // BUG FIX (2026-09-14): CONFIRMED live via getBoundingClientRect()/attribute
+    // dump on a real broken header — offsetWidth/offsetHeight return undefined
+    // for an <svg> letter-avatar (WhatsApp's no-photo placeholder), so this
+    // candidate always failed the size check and was never found. The sidebar's
+    // equivalent function already solved this by reading the SVG's width/height
+    // attributes directly instead of offsetWidth/offsetHeight.
+    if (img.tagName === 'svg' || img.tagName === 'SVG') {
+      w = parseInt(img.getAttribute('width'), 10);
+      h = parseInt(img.getAttribute('height'), 10);
+    } else {
+      w = img.offsetWidth;
+      h = img.offsetHeight;
+    }
+        if (w >= 25 && w <= 70 && h >= 25 && h <= 70 && isLeftAligned(img.getBoundingClientRect())) return img;
   }
   return null;
 }
@@ -5160,9 +5242,13 @@ function attachHeaderOverlay(container, photoUrl, phone) {
   if (!container || !photoUrl) return;
 
   // Ensure container can anchor absolute children
-  var pos = window.getComputedStyle(container).position;
-  if (pos === 'static') container.style.position = 'relative';
-
+  // Header container is sized by WhatsApp's own inline custom properties
+  // (--x-width/--x-height). Only establish a positioning context when needed;
+  // do not set width, height, or positional offsets on this native-sized box.
+var pos = window.getComputedStyle(container).position;
+if (pos === 'static') {
+  container.style.position = 'relative';
+}
   // Find or create our overlay div
   var overlay = container.querySelector('.' + DP_OVERLAY_CLASS);
   if (!overlay) {
@@ -5190,11 +5276,13 @@ function attachHeaderOverlay(container, photoUrl, phone) {
     Logger.info('[HEADER-OV] Overlay updated:', photoUrl.slice(0, 50));
   }
 
-  // Hide WhatsApp's img WITHOUT removing — React still manages it for layout
-  var img = container.querySelector('img, image');
+  // Hide WhatsApp's img (or letter-avatar svg) WITHOUT removing — React still
+  // manages it for layout. Our overlay div already visually covers it via
+  // z-index, but hiding the source avoids any edge peeking through.
+  var img = container.querySelector('img, image, svg');
   if (img && img.style.opacity !== '0') {
     img.style.opacity = '0';
-    Logger.debug('[HEADER-OV] Native img hidden (opacity:0)');
+    Logger.debug('[HEADER-OV] Native avatar hidden (opacity:0)');
   }
 
   // Mark container
@@ -5256,11 +5344,11 @@ function ensureDualProfileHeaderOverlay(headerEl, photoUrl, phone) {
   // MO on the CONTAINER — detects React remounting the img subtree
   if (!container._dpContainerMO) {
     container._dpContainerMO = new MutationObserver(function() {
-      // Re-hide img in case React remounted it with opacity:1
-      var img2 = container.querySelector('img, image');
+      // Re-hide img/svg in case React remounted it with opacity:1
+      var img2 = container.querySelector('img, image, svg');
       if (img2 && img2.style.opacity !== '0') {
         img2.style.opacity = '0';
-        Logger.debug('[HEADER-OV] Container MO: re-hid img after remount');
+        Logger.debug('[HEADER-OV] Container MO: re-hid avatar after remount');
       }
       // Ensure overlay div is still there (React can't remove it, but just in case)
       if (!container.querySelector('.' + DP_OVERLAY_CLASS)) {
@@ -5401,12 +5489,31 @@ var _dpRootObserver = null;
 /**
  * FIX 7: Structural header detection — only returns a header that contains an
  * avatar <img>. Prevents binding to wrong node if WhatsApp adds more banners.
+ *
+ * 2026-09: WhatsApp Web now renders the header avatar as an inline SVG
+ * letter-avatar (no <img>/<image> tag at all) when the open contact has no
+ * profile photo of their own — the exact same platform change that broke
+ * sidebar row avatar detection (see findOrCreateAvatarImg). That made this
+ * function return null for every such contact, which cascades into
+ * getContactNameFromHeader(), applyHeaderOverlayForCurrentContact(), and
+ * diagnose() all reporting no header at all. Confirmed live: "header exists:
+ * false" while "#main header exists: true" in the same diagnostic dump.
+ * Fix: keep the img/image check as the primary, most specific match (avoids
+ * regressions on normal contacts), but fall back to a candidate that carries
+ * WhatsApp's own conversation-header identity testid — already trusted
+ * elsewhere in this file as the most reliable signal (see
+ * getContactNameFromHeader Strategy 1) — for the no-photo/letter-avatar case.
  * @returns {HTMLElement|null}
  */
 function getHeader() {
   var candidates = document.querySelectorAll('#main header, #main [role="banner"]');
   for (var i = 0; i < candidates.length; i++) {
     if (candidates[i].querySelector('img, image')) return candidates[i];
+  }
+  for (var j = 0; j < candidates.length; j++) {
+    if (candidates[j].querySelector('[data-testid="conversation-info-header-chat-title"], [data-testid*="conversation-header"]')) {
+      return candidates[j];
+    }
   }
   return null;
 }
@@ -5920,10 +6027,16 @@ function applyOverlayToRow(row) {
 
   // v9.6: ensure namePhoneCache has name→phone even for rows where data-id is absent,
   // so the header lookup (which uses name as key) can find the photo.
+  // BUG FIX (2026-09-08): this was the single biggest source of cross-contact
+  // photo leaks. It ran on every sidebar row, on every scroll/mutation, and
+  // wrote namePhoneCache directly with no check for a different contact
+  // already owning this display name. Two contacts sharing a name (very
+  // common — unsaved numbers, duplicate saves, common first names) meant
+  // whichever one this function reached first, on every scan, permanently
+  // won that name for the other. Routed through cacheNamePhone() so a real
+  // collision gets dropped instead of silently mis-assigned.
   if (rowPhone && name) {
-    var _lname = name.toLowerCase();
-    if (!namePhoneCache[_lname]) {
-      namePhoneCache[_lname] = rowPhone;
+    if (cacheNamePhone(name, rowPhone)) {
       // Rebuild resolved contacts so normalizedIndex picks up new mapping
       buildResolvedContacts();
       // Re-trigger header immediately and via scheduler
@@ -5972,48 +6085,162 @@ function applyOverlayToRow(row) {
     // Sidebar matching is strict: phone-key OR exact-name-key only.
   }
 
-  // ── 3. Scoped P2P assignment (self-assignment guard + phone scoping) ────────
-  // Rule: sidebar shows ONLY what the contact published to us via P2P.
-  // Never show what we assigned to them (that shows on their device).
-  // Every img assignment is scoped to rowPhone — prevents virtualised DOM
-  // node reuse from bleeding one contact's photo onto another.
-  const avatarImg = row.querySelector('img, image');
-  if (!avatarImg) return;
+  // ── 2b. Resolve via the resolvedContacts/normalizedIndex layer purely for
+  // scoping purposes (see scopeKey below) — NOT for rendering. WhatsApp
+  // removed the @c.us data-id attribute from sidebar rows entirely, so
+  // extractPhoneFromSidebarRow() can no longer find rowPhone for ordinary
+  // contacts; this recovers a phone to scope the virtualised-row-reuse guard
+  // against, without falling back to fuzzy matching.
+  const _resolvedFallback = lookupResolvedContact(name);
 
-  // If this img node was previously tagged to a DIFFERENT phone, it's a
-  // virtualised row reuse. Clear stale data before applying new contact.
-  if (avatarImg.dataset.dpPhone && rowPhone && avatarImg.dataset.dpPhone !== rowPhone) {
-    const origSrc = avatarImg.dataset.dpOrigSrc;
-    if (origSrc) setImageSource(avatarImg, origSrc);
-    delete avatarImg.dataset.dpApplied;
-    delete avatarImg.dataset.dpOrigSrc;
-    delete avatarImg.dataset.dpPhone;
-    avatarImg.removeAttribute('data-dualprofile-preinit');
+  // ── 3. Apply photo — P2P ONLY, never local. By design (confirmed with
+  // Webb): a device must never show its own outgoing assignment back to
+  // itself. assignedPhoto (the local contactMap match computed above) is
+  // deliberately NOT rendered here — what a contact's sidebar icon shows is
+  // only what THAT PARTY assigned to us, delivered back via Convex sync,
+  // never our own outgoing assignment to them. (An earlier pass today wired
+  // assignedPhoto up to render directly, which was wrong — reverted.)
+  //
+  // BUG FIX (2026-09-11): a contact with no WhatsApp profile photo of their
+  // own is rendered by WhatsApp as an inline SVG letter-avatar (a circle
+  // with their initial), not an <img> tag. findOrCreateAvatarImg() overlays
+  // a real <img> on top of that SVG when none exists — but Webb was
+  // explicit: never do this speculatively for every no-photo contact,
+  // including ones who don't even have DualProfile installed. Only inject
+  // once we've confirmed there's an actual P2P photo to render — so
+  // find-or-create is now called INSIDE the p2pUrl branch below, never
+  // upfront. Checking for a stale/existing artifact (for cleanup) still
+  // uses a plain, non-creating lookup.
+  const existingAvatar = row.querySelector('img, image');
+
+  const scopeKey = rowPhone || (_resolvedFallback && _resolvedFallback.phone) || ('name:' + dpNormalizeName(name));
+
+  // If an existing avatar element was previously tagged to a DIFFERENT
+  // contact, it's a virtualised row reuse (or a leftover injected overlay
+  // from before this row got recycled for a new contact). Clear stale data
+  // before applying the new contact — an injected overlay just gets removed
+  // outright, since it has no "original" WhatsApp src to restore; a real
+  // <img> gets its original src restored as before.
+  if (existingAvatar && existingAvatar.dataset.dpPhone && existingAvatar.dataset.dpPhone !== scopeKey) {
+    if (existingAvatar.dataset.dpInjected === 'true') {
+      existingAvatar.remove();
+      return; // next scan/mutation pass re-evaluates this row fresh
+    }
+    const origSrc = existingAvatar.dataset.dpOrigSrc;
+    if (origSrc) setImageSource(existingAvatar, origSrc);
+    delete existingAvatar.dataset.dpApplied;
+    delete existingAvatar.dataset.dpOrigSrc;
+    delete existingAvatar.dataset.dpPhone;
+    existingAvatar.removeAttribute('data-dualprofile-preinit');
   }
 
-  // Check if this contact published a P2P photo to us
+  // Check if this contact published a P2P photo to us — the only source
+  // this function is allowed to render. Kept in memory (photoCache) and
+  // mirrored to chrome.storage/localStorage, so this still resolves while
+  // offline — see initP2PSync's Phase 1A/1B restore and Phase 2's
+  // offline/failure guard, which never evicts a cached photo just because
+  // a Convex request couldn't be made.
   const p2pPhoto = rowPhone ? p2pState.photoCache.get(rowPhone) : null;
   const p2pUrl   = p2pPhoto && p2pPhoto.url && isValidPhotoUrl(p2pPhoto.url) ? p2pPhoto.url : null;
 
   if (p2pUrl) {
-    if (avatarImg.dataset.dpApplied === p2pUrl && avatarImg.dataset.dpPhone === rowPhone) return;
-    if (!avatarImg.dataset.dpOrigSrc) avatarImg.dataset.dpOrigSrc = getImageSrc(avatarImg) || '';
+    // Only now — with a real photo to show — find or create somewhere to put it.
+    const avatarAnchor = findOrCreateAvatarImg(row);
+    const avatarImg = avatarAnchor.img;
+    if (!avatarImg) return;
+    if (avatarImg.dataset.dpApplied === p2pUrl && avatarImg.dataset.dpPhone === scopeKey) return;
+    if (!avatarAnchor.injected && !avatarImg.dataset.dpOrigSrc) avatarImg.dataset.dpOrigSrc = getImageSrc(avatarImg) || '';
     setImageSource(avatarImg, p2pUrl);
     avatarImg.dataset.dpApplied = p2pUrl;
-    avatarImg.dataset.dpPhone   = rowPhone; // scope tag
+    avatarImg.dataset.dpPhone   = scopeKey; // scope tag
     Logger.info('[DualProfile] Sidebar P2P photo for:', name, p2pUrl.slice(0, 40));
     return;
   }
 
-  // No P2P photo — restore default and clear any stale assignment
-  if (avatarImg.dataset.dpApplied) {
-    const origSrc = avatarImg.dataset.dpOrigSrc;
-    if (origSrc) setImageSource(avatarImg, origSrc);
-    delete avatarImg.dataset.dpApplied;
-    delete avatarImg.dataset.dpOrigSrc;
-    delete avatarImg.dataset.dpPhone;
+  // No P2P photo — clean up any existing DualProfile artifact, but never
+  // create a new placeholder for a contact we have nothing to show for.
+  // An injected overlay is simply removed (the WhatsApp letter-avatar
+  // underneath shows again on its own); a real <img> gets its original
+  // src restored.
+  if (existingAvatar && existingAvatar.dataset.dpApplied) {
+    if (existingAvatar.dataset.dpInjected === 'true') {
+      existingAvatar.remove();
+    } else {
+      const origSrc = existingAvatar.dataset.dpOrigSrc;
+      if (origSrc) setImageSource(existingAvatar, origSrc);
+      delete existingAvatar.dataset.dpApplied;
+      delete existingAvatar.dataset.dpOrigSrc;
+      delete existingAvatar.dataset.dpPhone;
+    }
     Logger.info('[DualProfile] Sidebar restored default for:', name, '(no P2P photo)');
   }
+}
+
+/**
+ * Find an existing avatar <img>/<image> in a sidebar row, or — when the
+ * contact has no WhatsApp profile photo of their own and WhatsApp instead
+ * renders an inline SVG letter-avatar — overlay a fresh <img> on top of that
+ * SVG's container so a local/P2P photo still has somewhere to render.
+ * @param {HTMLElement} row
+ * @returns {{img: HTMLElement|null, injected: boolean}}
+ */
+function findOrCreateAvatarImg(row) {
+  // BUG FIX (2026-09-12): same wrong-element defect confirmed live in
+  // findAvatarImgInRow — row.querySelector('img, image') returns the FIRST
+  // <img> in document order with no positional check, so for a row whose
+  // last message is a photo, WhatsApp's own message-preview thumbnail
+  // (which sits inline with the preview text, not flush against the row's
+  // left edge) could be picked up here instead of the real avatar,
+  // whenever it happens to precede the avatar in the DOM. Only accept a
+  // candidate that's actually left-aligned like a real avatar.
+  const rowRect = row.getBoundingClientRect();
+  function isLeftAligned(rect) {
+    return (rect.left - rowRect.left) <= 50;
+  }
+
+  const candidates = row.querySelectorAll('img, image');
+  for (const candidate of candidates) {
+    // BUG FIX (2026-09-11): don't assume an existing <img> is a genuine
+    // WhatsApp image — it may be our OWN overlay left over from a previous
+    // scan, now sitting in a row WhatsApp's virtualised list has recycled
+    // for a different contact (list re-sort on a new message, etc). Without
+    // this check, applyOverlayToRow's dpPhone-mismatch cleanup treated a
+    // stale injected overlay as a real photo to "restore", instead of
+    // removing it, so a contact's photo could stay visually stuck on
+    // whichever different contact the row got reused for next.
+    const isOwnOverlay = candidate.dataset && candidate.dataset.dpInjected === 'true';
+    if (isOwnOverlay || isLeftAligned(candidate.getBoundingClientRect())) {
+      return { img: candidate, injected: !!isOwnOverlay };
+    }
+  }
+
+  // No genuine avatar <img> found — find the square, avatar-sized SVG
+  // WhatsApp renders instead (a circle with the contact's initial) and
+  // overlay our own <img> directly on top of its container.
+  const svgs = row.querySelectorAll('svg');
+  for (const svg of svgs) {
+    const w = parseInt(svg.getAttribute('width'), 10);
+    const h = parseInt(svg.getAttribute('height'), 10);
+    if (!w || !h || w !== h || w < 30 || w > 70) continue;
+    if (!isLeftAligned(svg.getBoundingClientRect())) continue;
+    const container = svg.parentElement;
+    if (!container) continue;
+    if (getComputedStyle(container).position !== 'absolute') {
+  container.style.position = 'absolute';
+  container.style.top = '0';
+  container.style.left = '0';
+  container.style.width = '100%';
+  container.style.height = '100%';
+  container.style.right = 'auto';
+  container.style.bottom = 'auto';
+}
+    const overlay = document.createElement('img');
+    overlay.setAttribute('data-dp-injected', 'true');
+    overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;z-index:1;';
+    container.appendChild(overlay);
+    return { img: overlay, injected: true };
+  }
+  return { img: null, injected: false };
 }
 
 /**
@@ -6059,6 +6286,7 @@ function processNewSidebarRow(rowElement) {
   if (!rowContactName) return;
 
   // ── 2. Skip group chats by name and by data-icon / @g.us ─────────────────
+  console.log('[DP-DEBUG2] Group-guard check:', rowContactName.toLowerCase(), '→ in groupNames?', p2pState.groupNames.has(rowContactName.toLowerCase()));
   if (p2pState.groupNames.has(rowContactName.toLowerCase())) return;
   var isGroup = !!(
     row.querySelector('[data-icon="default-group"]') ||
@@ -6093,9 +6321,24 @@ function processNewSidebarRow(rowElement) {
   var existingOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
   if (existingOverlay) existingOverlay.remove();
 
-  // ── 6. Inject overlay — tied to name, never to index ─────────────────────
-  var wrapper = avatarImg.parentElement;
-  wrapper.style.position = 'relative';
+var wrapper = avatarImg.parentElement;
+
+  // BUG FIX (2026-09-13): same correction as findOrCreateAvatarImg. The
+ // 2026-09-12 comment below (dormant top/left offset activated by
+// position:relative) doesn't match what was actually measured live:
+// this wrapper's parent has padding-top:48px and is itself
+// position:relative, so a position:relative wrapper renders 48px below
+// the parent's own top edge (normal-flow displacement from the
+// padding), not from an activated offset. Absolute positioning, sized
+// to 100%/100%, is measured from the parent's padding edge and
+// correctly ignores that padding.
+  wrapper.style.position = 'absolute';
+  wrapper.style.top = '0';
+  wrapper.style.left = '0';
+  wrapper.style.width = '100%';
+  wrapper.style.height = '100%';
+  wrapper.style.right = 'auto';
+  wrapper.style.bottom = 'auto';
 
   var overlay = document.createElement('div');
   overlay.setAttribute('data-dualprofile-sidebar-overlay', 'true');
@@ -6271,6 +6514,26 @@ function extractPhoneFromRow(row) {
 * @returns {HTMLElement|null}
 */
 function findAvatarImgInRow(row) {
+  // CONFIRMED live via getBoundingClientRect() on a real broken row
+  // (2026-09-12): a contact with no profile photo of their own (their real
+  // avatar renders as an SVG letter-avatar, not an <img>) whose last
+  // message happened to be a photo. WhatsApp renders a small photo
+  // thumbnail as part of that "Photo" last-message preview, which also
+  // matched the 30-60px size filter below, so this function returned that
+  // unrelated thumbnail instead of falling through to the real avatar.
+  // Result: correctly-sized (48x48) overlay, correct row, wrong element —
+  // positioned down near the message-preview line instead of the avatar
+  // slot, visually spilling into the row below.
+  //
+  // Fix: WhatsApp always renders the real avatar flush against the row's
+  // left edge; a message-preview thumbnail sits well to the right, inline
+  // with text. Reject any candidate that isn't left-aligned with the row,
+  // regardless of what selector or size range it matched.
+  var rowRect = row.getBoundingClientRect();
+  function isLeftAligned(rect) {
+    return (rect.left - rowRect.left) <= 50;
+  }
+
   var selectors = [
     '[data-testid*="avatar"] img',
     'span[role="img"] img',
@@ -6282,8 +6545,16 @@ function findAvatarImgInRow(row) {
       // Skip any existing overlay images
       if (imgs[i].closest('[data-dualprofile-sidebar-overlay]')) continue;
       if (imgs[i].closest('[data-dualprofile-overlay]')) continue;
+      // CONFIRMED live (2026-09-12): applyOverlayToRow's findOrCreateAvatarImg
+      // injects its own overlay <img> (marked data-dp-injected="true") directly
+      // onto the avatar container, NOT wrapped in either selector above. Without
+      // this check, this function matched that already-injected image as if it
+      // were a genuine WhatsApp avatar (same row, correct size, left-aligned —
+      // it's deliberately positioned right on top of the real avatar) and piled
+      // a second, redundant overlay div+img directly on top of it.
+      if (imgs[i].dataset && imgs[i].dataset.dpInjected === 'true') continue;
       var w = imgs[i].offsetWidth, h = imgs[i].offsetHeight;
-      if (w >= 30 && w <= 60 && h >= 30 && h <= 60) {
+      if (w >= 30 && w <= 60 && h >= 30 && h <= 60 && isLeftAligned(imgs[i].getBoundingClientRect())) {
         return imgs[i];
       }
     }
@@ -6294,10 +6565,27 @@ function findAvatarImgInRow(row) {
   for (var k = 0; k < allImgs.length; k++) {
     if (allImgs[k].closest('[data-dualprofile-sidebar-overlay]')) continue;
     if (allImgs[k].closest('[data-dualprofile-overlay]')) continue;
+    if (allImgs[k].dataset && allImgs[k].dataset.dpInjected === 'true') continue;
     var src = getImageSrc(allImgs[k]) || '';
-    if (src.includes('pps.whatsapp.net') || src.includes('cdn.whatsapp.net') || src.includes('whatsapp.net') || src.includes('profile')) {
+    if ((src.includes('pps.whatsapp.net') || src.includes('cdn.whatsapp.net') || src.includes('whatsapp.net') || src.includes('profile'))
+        && isLeftAligned(allImgs[k].getBoundingClientRect())) {
       return allImgs[k];
     }
+  }
+  // No real <img> avatar found at all — this contact has no photo of their
+  // own, so WhatsApp is rendering their avatar as an inline SVG
+  // letter-avatar instead. Find it the same way findOrCreateAvatarImg does.
+  // Everything downstream only ever calls .parentElement and reads/writes
+  // .dataset on whatever this function returns, both of which work
+  // identically on an SVGElement, so returning the svg itself is safe.
+  var svgs = row.querySelectorAll('svg');
+  for (var v = 0; v < svgs.length; v++) {
+    var svg = svgs[v];
+    var sw = parseInt(svg.getAttribute('width'), 10);
+    var sh = parseInt(svg.getAttribute('height'), 10);
+    if (!sw || !sh || sw !== sh || sw < 30 || sw > 70) continue;
+    if (!isLeftAligned(svg.getBoundingClientRect())) continue;
+    return svg;
   }
   return null;
 }
