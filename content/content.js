@@ -2711,7 +2711,9 @@ function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
 //      was confirmed specific enough to be the only match at the time
 //      of testing, not by DOM position.
 //   3. data-testid="profile-pic-picker" and data-testid=
-//      "navbar-item-me-tab-photo" are still the right attributes for
+//      "navbar-item-profile-photo" (renamed from "navbar-item-me-tab-photo"
+//      since, see the CONFIRMED live note below) are still the right
+//      attributes for
 //      navigation. Everything else in that markup (x1c4vz4f, xs83m0k,
 //      etc.) is Meta's auto-generated utility CSS and can change between
 //      builds -- never select on those. Same reasoning ruled out the nav
@@ -2733,11 +2735,18 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
     let picker = document.querySelector('[data-testid="profile-pic-picker"]');
 
     if (!picker) {
-      // Deliberately not using the button's aria-label="You" -- that's
-      // the English label specifically and won't match if WhatsApp Web
-      // is set to another display language. The inner div's data-testid
-      // doesn't change with locale.
-      const navPhoto = document.querySelector('[data-testid="navbar-item-me-tab-photo"]');
+      // Deliberately not using the button's aria-label ("Profile", was
+      // "You") -- that's the English label specifically and won't match
+      // if WhatsApp Web is set to another display language. The inner
+      // div's data-testid doesn't change with locale.
+      //
+      // CONFIRMED live, 2026-09-22 (Webb): WhatsApp renamed this testid
+      // from "navbar-item-me-tab-photo" to "navbar-item-profile-photo"
+      // at some point after the 2026-08-02 verification above. This is
+      // exactly the class of change the surrounding comments already
+      // warned about -- confirmed via live querySelectorAll against the
+      // real page before touching this line, not guessed.
+      const navPhoto = document.querySelector('[data-testid="navbar-item-profile-photo"]');
       const navButton = navPhoto?.closest('button');
       if (!navButton) throw new Error('Profile nav button not found -- selectors need updating');
       navButton.click();
@@ -6012,6 +6021,32 @@ function applyOverlayToRow(row) {
   }
   if (!name) return;
 
+  // Hard-exclude WhatsApp's own official system/broadcast accounts — never
+  // a real bilateral contact, so never eligible for a photo here, regardless
+  // of what extractPhoneFromSidebarRow resolves. Root cause found 2026-09-23
+  // (Webb): this function (Pass 1, local contactMap/P2P overlay) is a
+  // SEPARATE code path from processNewSidebarRow (Pass 2) with its own
+  // rowPhone extraction and its own <img src> injection (dataset.dpApplied),
+  // not the [data-dualprofile-sidebar-overlay] wrapper — so excluding these
+  // names in processNewSidebarRow alone did not stop the leak here.
+  var SIDEBAR_LOCAL_SYSTEM_ACCOUNT_NAMES = ['whatsapp business', 'whatsapp'];
+  if (SIDEBAR_LOCAL_SYSTEM_ACCOUNT_NAMES.indexOf(name.trim().toLowerCase()) !== -1) {
+    var sysExistingAvatar = row.querySelector('img, image');
+    if (sysExistingAvatar && sysExistingAvatar.dataset.dpApplied) {
+      if (sysExistingAvatar.dataset.dpInjected === 'true') {
+        sysExistingAvatar.remove();
+      } else {
+        var sysOrigSrc = sysExistingAvatar.dataset.dpOrigSrc;
+        if (sysOrigSrc) setImageSource(sysExistingAvatar, sysOrigSrc);
+        delete sysExistingAvatar.dataset.dpApplied;
+        delete sysExistingAvatar.dataset.dpOrigSrc;
+        delete sysExistingAvatar.dataset.dpPhone;
+      }
+      Logger.info('[DualProfile] Sidebar restored default for system account:', name);
+    }
+    return;
+  }
+
   if (p2pState.groupNames.has(name.trim().toLowerCase())) {
     Logger.debug('[SIDEBAR-LOCAL] Skipped — known group name:', name);
     return;
@@ -6225,6 +6260,18 @@ function findOrCreateAvatarImg(row) {
     if (!isLeftAligned(svg.getBoundingClientRect())) continue;
     const container = svg.parentElement;
     if (!container) continue;
+    // BUG FIX (2026-09-22, CONFIRMED live, same root cause as the
+    // processNewSidebarRow wrapper fix): making container itself
+    // position:absolute only sizes it correctly via width:100%/height:100%
+    // if container's OWN parent is already positioned. When that parent
+    // is static, the browser skips it and uses a much larger ancestor
+    // (up to the whole row) as the containing block instead, stretching
+    // this avatar into an oval. Explicitly positioning container's parent
+    // removes that dependency instead of assuming it's already correct.
+    const containerParent = container.parentElement;
+    if (containerParent && getComputedStyle(containerParent).position === 'static') {
+      containerParent.style.position = 'relative';
+    }
     if (getComputedStyle(container).position !== 'absolute') {
   container.style.position = 'absolute';
   container.style.top = '0';
@@ -6285,9 +6332,37 @@ function processNewSidebarRow(rowElement) {
   }
   if (!rowContactName) return;
 
+  // ── 1b. Hard-exclude WhatsApp's own official system/broadcast accounts.
+  // These are not real bilateral contacts, so they must never receive an
+  // overlay, regardless of what namePhoneCache or groupNames say. Root
+  // cause found 2026-09-23 (Webb): the official "WhatsApp Business" thread
+  // has no @c.us data-id of its own, so extractPhoneFromRow's name-based
+  // fallback (Strategy 3) resolves it via the SAME namePhoneCache key that
+  // a real contact sharing that exact display name legitimately owns —
+  // "WhatsApp Business" the row inherited that contact's assigned photo.
+  // A hard name exclusion here stops the leak at the source instead of
+  // relying on the group-guard's timing (which only cleans up after the
+  // wrong photo is already showing).
+  var SYSTEM_ACCOUNT_NAMES = ['whatsapp business', 'whatsapp'];
+  if (SYSTEM_ACCOUNT_NAMES.indexOf(rowContactName.toLowerCase()) !== -1) {
+    var systemAccountStaleOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
+    if (systemAccountStaleOverlay) systemAccountStaleOverlay.remove();
+    return;
+  }
+
   // ── 2. Skip group chats by name and by data-icon / @g.us ─────────────────
-  console.log('[DP-DEBUG2] Group-guard check:', rowContactName.toLowerCase(), '→ in groupNames?', p2pState.groupNames.has(rowContactName.toLowerCase()));
-  if (p2pState.groupNames.has(rowContactName.toLowerCase())) return;
+  if (p2pState.groupNames.has(rowContactName.toLowerCase())) {
+    // A row can flip in/out of groupNames between scans (e.g. WhatsApp's
+    // own "WhatsApp Business" system row). If an earlier pass, before it
+    // was classified as a group, wrongly phone-matched and injected an
+    // overlay, this early return must still clean that up — otherwise the
+    // wrong photo is stuck on the row forever. Confirmed live 2026-09-23
+    // (Webb): "WhatsApp Business" kept a photo cached against a different
+    // contact's phone number even after groupNames flipped to true.
+    var groupStaleOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
+    if (groupStaleOverlay) groupStaleOverlay.remove();
+    return;
+  }
   var isGroup = !!(
     row.querySelector('[data-icon="default-group"]') ||
     row.querySelector('span[data-icon="default-group"]') ||
@@ -6298,6 +6373,22 @@ function processNewSidebarRow(rowElement) {
   // ── 3. Extract phone (still needed for P2P cache lookup) ─────────────────
   var phone = extractPhoneFromRow(row);
   if (!phone) return;
+
+  // Never overlay onto the account's own number. WhatsApp Business renders a
+  // system "WhatsApp Business" row whose data-id resolves to the account's
+  // own phone (same number as any self-chat/contact row), so without this
+  // guard the photo cached against your own number leaks onto that row too.
+  // Confirmed live 2026-09-23 (Webb): "WhatsApp Business" row extracted the
+  // same phone as "Edwin Plange" and inherited its cached photo.
+  if (p2pState.ownRawPhone && phone === p2pState.ownRawPhone) {
+    // Clean up any overlay already injected before this guard existed —
+    // otherwise a row that resolves to your own number keeps a stale
+    // photo forever, since we return here before reaching the normal
+    // stale-overlay-removal step below.
+    var ownPhoneStaleOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
+    if (ownPhoneStaleOverlay) ownPhoneStaleOverlay.remove();
+    return;
+  }
 
   // ── 4. Check P2P cache ────────────────────────────────────────────────────
   var cached = p2pState.photoCache.get(phone);
@@ -6332,6 +6423,25 @@ var wrapper = avatarImg.parentElement;
 // padding), not from an activated offset. Absolute positioning, sized
 // to 100%/100%, is measured from the parent's padding edge and
 // correctly ignores that padding.
+  //
+  // BUG FIX (2026-09-22, CONFIRMED live on a WhatsApp Business account):
+  // the paragraph above assumed the wrapper's parent is always
+  // position:relative already. It isn't, on every row -- live
+  // measurement on a stretched, oval-shaped overlay showed
+  // wrapper.offsetParent's rect was identical to the whole row's rect
+  // (481x72, not a ~48x48 avatar slot). That means wrapper's own parent
+  // was position:static, so the browser skipped past it and used the
+  // row itself as the containing block for width:100%/height:100%,
+  // stretching a border-radius:50% circle into a wide oval. Explicitly
+  // setting the parent to position:relative when it isn't already
+  // removes the dependency on WhatsApp happening to have positioned it,
+  // the same defensive pattern already used for the header container
+  // fix elsewhere in this file.
+  var wrapperContainer = wrapper.parentElement;
+  if (wrapperContainer && getComputedStyle(wrapperContainer).position === 'static') {
+    wrapperContainer.style.position = 'relative';
+  }
+
   wrapper.style.position = 'absolute';
   wrapper.style.top = '0';
   wrapper.style.left = '0';
