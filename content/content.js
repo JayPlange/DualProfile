@@ -6498,6 +6498,34 @@ function processNewSidebarRow(rowElement) {
   var avatarImg = findAvatarImgInRow(row);
   if (!avatarImg || !avatarImg.parentElement) return;
 
+  // Pass 1 (applyOverlayToRow) already swapped this real WhatsApp avatar's
+  // picture (it tags the element with data-dp-phone, which Pass 2 never
+  // sets). Stacking a second overlay on top is redundant, and Pass 2's
+  // positioning below is what collapsed the avatar column. Measured live on
+  // a WhatsApp Business row (2026-10-02): both passes had acted on one row,
+  // the avatar's container went to 0x0, the avatar was squeezed to 27x48 and
+  // the chat name shifted left. The comment above applySidebarOverlays says
+  // Pass 2 skips such rows, but its check compares dpApplied with the
+  // contact NAME while Pass 1 stores the photo URL there, so it never did.
+  // Leave the row to Pass 1, and undo anything an earlier Pass 2 left behind.
+  if (avatarImg.dataset.dpPhone) {
+    var staleOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
+    if (staleOverlay) {
+      var staleWrapper = avatarImg.parentElement;
+      staleOverlay.remove();
+      ['position', 'top', 'left', 'right', 'bottom', 'width', 'height'].forEach(function (prop) {
+        staleWrapper.style.removeProperty(prop);
+      });
+      var staleContainer = staleWrapper.parentElement;
+      if (staleContainer) {
+        ['min-width', 'min-height', 'flex-shrink'].forEach(function (prop) {
+          staleContainer.style.removeProperty(prop);
+        });
+      }
+    }
+    return;
+  }
+
   if (avatarImg.dataset.dpApplied === rowContactName) {
     // Already correct for this contact — check overlay DOM still present
     if (row.querySelector('[data-dualprofile-sidebar-overlay="true"]')) return;
@@ -6537,6 +6565,22 @@ var wrapper = avatarImg.parentElement;
   var wrapperContainer = wrapper.parentElement;
   if (wrapperContainer && getComputedStyle(wrapperContainer).position === 'static') {
     wrapperContainer.style.position = 'relative';
+  }
+
+  // Taking the wrapper out of normal flow (position:absolute, below) removes
+  // the container's only in-flow content. If the container is content-sized
+  // (measured live 2026-10-02: display:inline-flex), it collapses to 0x0 and
+  // squeezes the avatar. Pin the container to the size it has right now. Only
+  // when that is avatar-sized, so a wide container is never frozen.
+  if (wrapperContainer) {
+    var pinFallback = parseInt(avatarImg.getAttribute('width'), 10) || 48;
+    var pinW = wrapperContainer.offsetWidth || pinFallback;
+    var pinH = wrapperContainer.offsetHeight || pinFallback;
+    if (pinW <= 80 && pinH <= 80) {
+      wrapperContainer.style.minWidth = pinW + 'px';
+      wrapperContainer.style.minHeight = pinH + 'px';
+      wrapperContainer.style.flexShrink = '0';
+    }
   }
 
   wrapper.style.position = 'absolute';
