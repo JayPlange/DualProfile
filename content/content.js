@@ -2636,6 +2636,12 @@ function autoPreviewOnLoad() {
 // any way to touch it -- the tradeoff is it only reaches WhatsApp Web
 // tabs specifically, this extension has no permission to draw into any
 // other site.
+
+// Sends a timestamped event to the service worker's schedule diagnostic log.
+function dpLog(event, detail) {
+  try { chrome.runtime.sendMessage({ type: 'SCHEDULE_LOG', event, detail: detail === undefined ? '' : String(detail) }); } catch (_) {}
+}
+
 function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
   const existing = document.getElementById('dp-schedule-toast');
   if (existing) existing.remove();
@@ -2699,15 +2705,18 @@ function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
   toast.querySelector('.dp-toast-switch').textContent = switchNowLabel;
 
   toast.querySelector('.dp-toast-switch').addEventListener('click', () => {
+    dpLog('toast_click', 'switch');
     chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'switch' });
     toast.remove();
   });
   toast.querySelector('.dp-toast-dismiss').addEventListener('click', () => {
+    dpLog('toast_click', 'not_now');
     chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'not_now' });
     toast.remove();
   });
 
   document.body.appendChild(toast);
+  dpLog('toast_shown', 'in-page toast displayed');
 }
 
 // ── applyRealProfilePhotoChange ───────────────────────────────────────────────
@@ -2745,6 +2754,9 @@ function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
 // the whole way through, before it's ever left to fire unattended off
 // the notification flow.
 async function applyRealProfilePhotoChange(photoDataUrl) {
+  const _t0 = Date.now();
+  const _step = (name) => dpLog('step', name + ' +' + (Date.now() - _t0) + 'ms');
+  _step('start (panel already open: ' + !!document.querySelector('[data-testid="profile-pic-picker"]') + ')');
   try {
     // Navigate to the profile screen first -- everything below assumes
     // it's open, and nothing gets there on its own. Check whether it's
@@ -2765,26 +2777,32 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
       // exactly the class of change the surrounding comments already
       // warned about -- confirmed via live querySelectorAll against the
       // real page before touching this line, not guessed.
-      const navPhoto = document.querySelector('[data-testid="navbar-item-profile-photo"]');
-      const navButton = navPhoto?.closest('button');
-      if (!navButton) throw new Error('Profile nav button not found -- selectors need updating');
+      const navButton = findProfileNavButton();
+      if (!navButton) throw new Error('STEP 1: profile nav button not found (no navbar-item-profile-photo, no navbar footer button)');
+      _step('1 nav button found and clicked');
       navButton.click();
 
-      // Clicking the sidebar avatar opens a "Me" overview panel first,
-      // not the editable photo screen directly -- confirmed by direct
-      // inspection, 2026-08-02. The large photo on that overview panel
-      // is the actual shortcut into the edit screen; WhatsApp labels it
-      // "View photo" even though clicking it is what reveals the
-      // edit/camera UI, going by what was actually observed rather than
-      // the label text. Same locale caveat as aria-label="You" earlier:
-      // this is the English label specifically, worth a locale-
-      // independent replacement if one turns up later.
-      const photoButton = await waitForElement('[role="button"][aria-label="View photo"]', 5000);
-      if (!photoButton) throw new Error('"Me" overview photo button not found -- selectors need updating');
-      photoButton.click();
+      // What the nav click opens depends on the account (inspected on live
+      // WhatsApp Web, 2026-09-29):
+      //   - Business account: the profile editor directly (picker present).
+      //   - Personal account: a settings list whose first row is
+      //     button[data-testid="li-profile"] ("Profile"); clicking it opens
+      //     the editor. Console test: click li-profile -> picker present.
+      //   - An account that already has a photo may show "View photo" first.
+      // Wait for whichever appears first, then take the matching step.
+      const first = await waitForAnyElement([
+        '[data-testid="profile-pic-picker"]',
+        '[data-testid="li-profile"]',
+        '[role="button"][aria-label="View photo"]'
+      ], 6000);
+      if (!first) throw new Error('STEP 2: none of the picker, the Profile row (li-profile) or "View photo" appeared within 6s');
+      const firstKind = first.dataset.testid === 'profile-pic-picker' ? 'profile picker'
+        : first.dataset.testid === 'li-profile' ? 'Profile row (li-profile)' : 'View photo';
+      _step('2 first element appeared: ' + firstKind);
+      if (firstKind !== 'profile picker') first.click();
 
       picker = await waitForElement('[data-testid="profile-pic-picker"]', 5000);
-      if (!picker) throw new Error('Profile screen did not open, or picker not found -- selectors need updating');
+      if (!picker) throw new Error('STEP 3: profile picker not found after opening the profile panel');
     }
 
     // Confirmed via direct diagnostic (2026-08-02), not assumed: this
@@ -2794,12 +2812,14 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
     // exact accept list is specific enough to trust on its own; the
     // page's other file input at the time of testing was a generic
     // any-file, multi-select one (chat attachments), clearly distinct.
+    _step('3 picker present');
     const fileInput = await waitForElement(
       'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]',
       5000
     );
-    if (!fileInput) throw new Error('Profile picture file input not found -- selectors need updating');
+    if (!fileInput) throw new Error('STEP 4: profile picture file input not found');
 
+    _step('4 file input found');
     const file = await dataUrlToFile(photoDataUrl, 'dualprofile-scheduled.jpg');
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
@@ -2820,11 +2840,13 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
     // unsolved gap.
     const confirmButton = await waitForElement('button[aria-label="Submit image"]', 8000);
     if (!confirmButton) {
-      throw new Error('Crop screen did not appear within 8s -- selectors need updating, or the file was rejected');
+      throw new Error('STEP 5: crop screen did not appear within 8s (selector changed, or file rejected)');
     }
 
+    _step('5 crop screen ready, waiting for the person to approve');
     return { success: true, readyForConfirmation: true };
   } catch (e) {
+    _step('FAILED ' + e.message);
     Logger.error('[SCHEDULE] Real profile photo change failed:', e);
     return { success: false, error: e.message };
   }
@@ -2840,6 +2862,35 @@ window.__dpTestApplyScheduledPhoto = applyRealProfilePhotoChange;
 // Small, generic helpers used by applyRealProfilePhotoChange above.
 // Not tied to the schedule feature specifically, kept next to it since
 // it's the only current caller.
+
+// Finds the button that opens the account's own profile. Tries the testid
+// first (Business accounts, confirmed 2026-09-22). Personal accounts have no
+// such testid: confirmed 2026-09-29 on a live personal account, the nav
+// footer holds exactly two buttons, Media then the profile button, so the
+// last button in the footer is the profile button. Structure, not the
+// English aria-label "You".
+function findProfileNavButton() {
+  const byTestId = document.querySelector('[data-testid="navbar-item-profile-photo"]')?.closest('button');
+  if (byTestId) return byTestId;
+  const footer = document.querySelector('[data-testid="navbar-footer-section"]');
+  if (!footer) return null;
+  const buttons = footer.querySelectorAll('button');
+  return buttons.length ? buttons[buttons.length - 1] : null;
+}
+
+// Resolves with the first element matching any selector, or null on timeout.
+function waitForAnyElement(selectors, timeoutMs = 5000) {
+  const query = () => { for (const s of selectors) { const el = document.querySelector(s); if (el) return el; } return null; };
+  return new Promise((resolve) => {
+    const existing = query();
+    if (existing) { resolve(existing); return; }
+    let done = false;
+    const finish = (el) => { if (done) return; done = true; observer.disconnect(); clearTimeout(timer); resolve(el); };
+    const observer = new MutationObserver(() => { const el = query(); if (el) finish(el); });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    const timer = setTimeout(() => finish(null), timeoutMs);
+  });
+}
 
 function waitForElement(selector, timeoutMs = 5000) {
   return new Promise((resolve) => {
