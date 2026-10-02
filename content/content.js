@@ -956,8 +956,15 @@
       const raw = data.namePhoneCache || {};
       // Normalize all keys to lowercase so lookups are consistent
       namePhoneCache = {};
+      // This load bypasses cacheNamePhone()'s guard (it's a bulk restore, not
+      // a single write), so a system-account entry persisted to storage
+      // before the 2026-09-23 fix could otherwise resurrect itself on every
+      // reload. Filter it out here too.
+      const DP_SYSTEM_ACCOUNT_NAMES_LOAD = ['whatsapp business', 'whatsapp'];
       for (const [key, value] of Object.entries(raw)) {
-        namePhoneCache[key.trim().toLowerCase()] = normalizePhone(value) || value;
+        const normKey = key.trim().toLowerCase();
+        if (DP_SYSTEM_ACCOUNT_NAMES_LOAD.indexOf(normKey) !== -1) continue;
+        namePhoneCache[normKey] = normalizePhone(value) || value;
         tryRenderHeader();
       }
       Logger.info('[CACHE] Loaded namePhoneCache:', Object.keys(namePhoneCache).length, 'entries (keys normalized to lowercase)');
@@ -1001,6 +1008,18 @@
     const key = rawName.trim().toLowerCase();
     if (!key) return false;
     const phone = normalizePhone(rawPhone) || rawPhone;
+
+    // Never let WhatsApp's own official system/broadcast accounts enter
+    // namePhoneCache under any phone. Root cause found 2026-09-23 (Webb):
+    // "WhatsApp Business" has no @c.us data-id of its own, so it was
+    // resolved via name-based fallback and inherited a real contact's
+    // photo — a leak that reached both the sidebar AND, via this same
+    // cache feeding syncNotificationPhotoMap()'s phoneToName reverse
+    // lookup, the browser notification icon for that system account too.
+    // Blocking it here, at the single guarded write entry point, fixes
+    // every consumer at once instead of each render path separately.
+    const DP_SYSTEM_ACCOUNT_NAMES = ['whatsapp business', 'whatsapp'];
+    if (DP_SYSTEM_ACCOUNT_NAMES.indexOf(key) !== -1) return false;
 
     if (ambiguousNames.has(key)) return false; // already known unsafe, stay dropped
 
@@ -6374,12 +6393,17 @@ function processNewSidebarRow(rowElement) {
   var phone = extractPhoneFromRow(row);
   if (!phone) return;
 
-  // Never overlay onto the account's own number. WhatsApp Business renders a
-  // system "WhatsApp Business" row whose data-id resolves to the account's
-  // own phone (same number as any self-chat/contact row), so without this
-  // guard the photo cached against your own number leaks onto that row too.
-  // Confirmed live 2026-09-23 (Webb): "WhatsApp Business" row extracted the
-  // same phone as "Edwin Plange" and inherited its cached photo.
+  // Never overlay onto the account's own number — if it ever appears as a
+  // row (e.g. a self-chat), any photo cached against your own number must
+  // not leak onto it. NOTE (correcting the record, 2026-09-23): this guard
+  // was originally added on the theory that it explained the "WhatsApp
+  // Business" photo leak. Live evidence disproved that — ownRawPhone was
+  // confirmed to be a different number (233509764406, the @DualProfile row)
+  // than the one actually leaking (233547716672, Edwin Plange's). The real
+  // fix for that bug is the SYSTEM_ACCOUNT_NAMES exclusion above. This guard
+  // is kept as a separate, still-valid defence against a genuinely different
+  // scenario (your own number appearing in the sidebar), not as the fix for
+  // the bug that was actually observed.
   if (p2pState.ownRawPhone && phone === p2pState.ownRawPhone) {
     // Clean up any overlay already injected before this guard existed —
     // otherwise a row that resolves to your own number keeps a stale
@@ -6530,32 +6554,83 @@ function ensureSidebarObserver() {
   if (!sidebarPane) return;
 
   // ── MutationObserver: catches React virtualized row swaps ─────────────────
+  // Watches childList (rows added/removed) AND the title attribute (rows
+  // recycled IN PLACE — React updates an existing row's span[title] rather
+  // than replacing the DOM node, which childList alone never sees). Without
+  // this, a recycled row keeps showing the PREVIOUS contact's photo until
+  // the next 1s poll — a visible flash. Fixed 2026-09-23 (Webb).
+  //
+  // Deliberately NOT observing characterData: WhatsApp sidebar rows contain
+  // constantly-changing text (message previews, unread counts) that would
+  // fire far more often than actual identity changes, on every row, during
+  // normal use. span[title] is documented elsewhere in this file as "most
+  // reliable when present" and every live diagnostic this session confirms
+  // it's present on the WhatsApp build in use, so the textContent-based
+  // fallback strategies (B/C) are an edge case not confirmed to occur here;
+  // the 1s poll remains the backstop for that edge case, same as before
+  // this fix, rather than paying an unproven ongoing cost for it.
+  var _rowsToReprocess = new Set();
+  var _reprocessScheduled = false;
+  function scheduleRowReprocess(row) {
+    if (!row) return;
+    _rowsToReprocess.add(row);
+    if (_reprocessScheduled) return;
+    _reprocessScheduled = true;
+    // Microtask, not a timer — runs before the next paint, no added delay.
+    Promise.resolve().then(function () {
+      _reprocessScheduled = false;
+      var rows = _rowsToReprocess;
+      _rowsToReprocess = new Set();
+      rows.forEach(function (r) {
+        if (!r.isConnected) return;
+        applyOverlayToRow(r);
+        if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(r);
+      });
+    });
+  }
+
   _sidebarObserver = new MutationObserver(function (mutations) {
     if (!state.enabled) return;
 
     for (var m = 0; m < mutations.length; m++) {
-      if (mutations[m].type !== 'childList') continue;
-      var added = mutations[m].addedNodes;
-      for (var n = 0; n < added.length; n++) {
-        if (added[n].nodeType !== 1) continue;
-        // If the added node IS a row, process it directly
-        if (added[n].getAttribute && added[n].getAttribute('role') === 'row') {
-          applyOverlayToRow(added[n]);
-          if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(added[n]);
-        } else {
-          // React may swap larger chunks containing multiple rows
-          var innerRows = added[n].querySelectorAll ? added[n].querySelectorAll('[role="row"]') : [];
-          for (var r = 0; r < innerRows.length; r++) {
-            applyOverlayToRow(innerRows[r]);
-            if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(innerRows[r]);
+      var mut = mutations[m];
+
+      if (mut.type === 'childList') {
+        var added = mut.addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          if (added[n].nodeType !== 1) continue;
+          // If the added node IS a row, process it directly
+          if (added[n].getAttribute && added[n].getAttribute('role') === 'row') {
+            applyOverlayToRow(added[n]);
+            if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(added[n]);
+          } else {
+            // React may swap larger chunks containing multiple rows
+            var innerRows = added[n].querySelectorAll ? added[n].querySelectorAll('[role="row"]') : [];
+            for (var r = 0; r < innerRows.length; r++) {
+              applyOverlayToRow(innerRows[r]);
+              if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(innerRows[r]);
+            }
           }
         }
+      } else if (mut.type === 'attributes') {
+        // A recycled row's span[title] changed without the row node itself
+        // being replaced. mut.target is always an Element for attribute
+        // mutations (never a text node), so no nodeType branch is needed.
+        // Find the owning row and re-evaluate it immediately, before the
+        // next poll.
+        var ownerRow = mut.target.closest ? mut.target.closest('[role="row"]') : null;
+        if (ownerRow) scheduleRowReprocess(ownerRow);
       }
     }
   });
 
-  _sidebarObserver.observe(sidebarPane, { childList: true, subtree: true });
-  Logger.info('[SIDEBAR] MutationObserver attached to div[aria-label="Chat list"][role="grid"]');
+  _sidebarObserver.observe(sidebarPane, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['title']
+  });
+  Logger.info('[SIDEBAR] MutationObserver attached to div[aria-label="Chat list"][role="grid"] (childList + title attribute)');
 
   // ── Scroll listener: re-applies overlays on lazy-loaded rows ─────────────
   // Debounced at 200ms so rapid scrolling doesn't hammer the DOM.
