@@ -2808,18 +2808,26 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
     // Confirmed via direct diagnostic (2026-08-02), not assumed: this
     // input is NOT a descendant of the picker container, despite how it
     // looked in an earlier screenshot. It renders elsewhere in the page
-    // entirely, so it's found by what it is, not where it sits. This
-    // exact accept list is specific enough to trust on its own; the
-    // page's other file input at the time of testing was a generic
-    // any-file, multi-select one (chat attachments), clearly distinct.
+    // entirely. Its accept list is specific enough to find it by what it
+    // is, but NOT enough to pick it by that alone: measured on a live
+    // WhatsApp Business profile editor (2026-10-02), the page holds TWO
+    // inputs with this identical accept list, one for the cover photo
+    // (document order 0, five levels above the avatar's picker) and one
+    // for the avatar (document order 1, one level above it). Taking the
+    // first match therefore uploaded to the cover photo. The avatar's
+    // input is the one nearest to the picker, so walk up from the picker
+    // and take the first match found. A personal account has one such
+    // input, and this still finds it, at whatever level it sits.
     _step('3 picker present');
-    const fileInput = await waitForElement(
-      'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]',
-      5000
-    );
-    if (!fileInput) throw new Error('STEP 4: profile picture file input not found');
+    const PHOTO_INPUT_SELECTOR = 'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]';
+    await waitForElement(PHOTO_INPUT_SELECTOR, 5000);
+    const photoInputHit = findProfilePhotoInput(picker, PHOTO_INPUT_SELECTOR);
+    if (!photoInputHit) throw new Error('STEP 4: profile picture file input not found');
+    const fileInput = photoInputHit.input;
 
-    _step('4 file input found');
+    _step('4 file input found (level ' + photoInputHit.level + ' above picker, ' +
+      photoInputHit.candidates + ' candidate(s) there, ' +
+      document.querySelectorAll(PHOTO_INPUT_SELECTOR).length + ' on the page)');
     const file = await dataUrlToFile(photoDataUrl, 'dualprofile-scheduled.jpg');
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
@@ -2862,6 +2870,20 @@ window.__dpTestApplyScheduledPhoto = applyRealProfilePhotoChange;
 // Small, generic helpers used by applyRealProfilePhotoChange above.
 // Not tied to the schedule feature specifically, kept next to it since
 // it's the only current caller.
+
+// Returns the file input nearest to `picker`, by walking up from it and
+// stopping at the first ancestor that contains a match. Null if none.
+function findProfilePhotoInput(picker, selector) {
+  let node = picker;
+  let level = 0;
+  while (node) {
+    const found = node.querySelectorAll(selector);
+    if (found.length) return { input: found[0], level, candidates: found.length };
+    node = node.parentElement;
+    level++;
+  }
+  return null;
+}
 
 // Finds the button that opens the account's own profile. Tries the testid
 // first (Business accounts, confirmed 2026-09-22). Personal accounts have no
