@@ -6567,21 +6567,13 @@ var wrapper = avatarImg.parentElement;
     wrapperContainer.style.position = 'relative';
   }
 
-  // Taking the wrapper out of normal flow (position:absolute, below) removes
-  // the container's only in-flow content. If the container is content-sized
-  // (measured live 2026-10-02: display:inline-flex), it collapses to 0x0 and
-  // squeezes the avatar. Pin the container to the size it has right now. Only
-  // when that is avatar-sized, so a wide container is never frozen.
-  if (wrapperContainer) {
-    var pinFallback = parseInt(avatarImg.getAttribute('width'), 10) || 48;
-    var pinW = wrapperContainer.offsetWidth || pinFallback;
-    var pinH = wrapperContainer.offsetHeight || pinFallback;
-    if (pinW <= 80 && pinH <= 80) {
-      wrapperContainer.style.minWidth = pinW + 'px';
-      wrapperContainer.style.minHeight = pinH + 'px';
-      wrapperContainer.style.flexShrink = '0';
-    }
-  }
+  // NOTE: an earlier version pinned this container's min-width/min-height to
+  // its measured size before the wrapper went absolute. Removed 2026-10-02:
+  // WhatsApp sizes this container with an aspect-ratio box (padding-top:
+  // 100%), so min-height (a content-box value) ADDED to that padding and the
+  // container doubled from 48px to 96px, stretching the overlay into a tall
+  // oval over the next row. Measured live in Chrome and Edge: same container,
+  // 48x48 without the pin, 48x96 with it.
 
   wrapper.style.position = 'absolute';
   wrapper.style.top = '0';
