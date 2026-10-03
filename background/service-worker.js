@@ -139,6 +139,7 @@ chrome.storage.local.get('dp_schedule', (result) => {
 
 // Import libraries
 importScripts('../lib/tier-system.js');
+importScripts('../lib/schedule-window.js');  // isInScheduleWindow (shared window rule, overnight-aware)
 importScripts('../lib/config.js');
 importScripts('../lib/crypto-utils.js');
 importScripts('../lib/device-auth.js');  // must precede convex-http.js
@@ -2259,11 +2260,7 @@ async function handleDeleteSchedule(message, sendResponse) {
 //                  nothing to do until the schedule crosses a new boundary.
 // Which photo the schedule says should be on the profile right now.
 function computeScheduleTarget(schedule, now) {
-  const dayOfWeek = now.getDay(); // 0=Sun
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const startMinutes = schedule.startHour * 60 + schedule.startMinute;
-  const endMinutes = schedule.endHour * 60 + schedule.endMinute;
-  const inWindow = schedule.days.includes(dayOfWeek) && currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  const inWindow = isInScheduleWindow(schedule, now.getDay(), now.getHours() * 60 + now.getMinutes());
   const targetPhoto = inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
   return { inWindow, targetPhoto };
 }
