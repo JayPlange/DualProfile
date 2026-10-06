@@ -39,7 +39,7 @@ function _dpFmtTime(ms) {
 
 async function buildScheduleReport() {
   await _dpSchedLogQueue;
-  const stored = await chrome.storage.local.get([DP_SCHED_LOG_KEY, 'dp_schedule', 'dp_schedule_state']);
+  const stored = await chrome.storage.local.get([DP_SCHED_LOG_KEY, 'dp_schedule', 'dp_schedule_state', 'dp_wa_health']);
   const log = stored[DP_SCHED_LOG_KEY] || [];
   const alarm = await chrome.alarms.get('dp-schedule-check').catch(() => null);
   const waTabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' }).catch(() => []);
@@ -53,6 +53,15 @@ async function buildScheduleReport() {
   lines.push('schedule: ' + JSON.stringify(stored.dp_schedule || null));
   lines.push('schedule state: ' + JSON.stringify(stored.dp_schedule_state || null));
   lines.push('alarm dp-schedule-check: ' + (alarm ? 'next ' + _dpFmtTime(alarm.scheduledTime) + ', period ' + alarm.periodInMinutes + ' min' : 'MISSING'));
+  const _calls = (typeof ConvexHTTP !== 'undefined' && ConvexHTTP.statsSummary) ? ConvexHTTP.statsSummary(5 * 60 * 1000) : {};
+  lines.push('live push (WebSocket): ' + (_liveSubActive ? 'active' : 'INACTIVE'));
+  lines.push('convex queries, last 5 min since the service worker started: ' + (Object.keys(_calls).length ? Object.keys(_calls).map(k => k + ' x' + _calls[k]).join(', ') : 'none'));
+  const _health = stored.dp_wa_health;
+  if (_health && _health.results) {
+    lines.push('whatsapp page check (' + _dpFmtTime(_health.at) + '): ' + _health.results.map(r => (r.ok ? 'ok ' : 'FAIL ') + r.name + (r.via ? ' [' + r.via + ']' : '')).join('; '));
+  } else {
+    lines.push('whatsapp page check: not run yet (needs a visible WhatsApp tab)');
+  }
   lines.push('whatsapp tabs: ' + (waTabs.length ? waTabs.map(x => `#${x.id} status=${x.status} active=${x.active} discarded=${x.discarded}`).join('; ') : 'none open'));
   lines.push('');
   lines.push('time (local)   +gap   source event detail');
@@ -1546,10 +1555,23 @@ async function handleRemoveSyncedAssignment(message, sendResponse) {
 }
 
 // O(1) version check — viewer polls every 800ms to detect any assignment change
+// Several WhatsApp tabs (or two quick polls) share one Convex call: an answer is reused for 2s, and
+// a call already in flight is awaited instead of repeated.
+let _lastTimeCache = { at: 0, value: null };
+let _lastTimeInflight = null;
 async function handleGetLastAssignmentTime(sendResponse) {
   await _syncInitPromise;
   try {
-    const timestamp = await SyncManager.getLastAssignmentTime();
+    if (Date.now() - _lastTimeCache.at < 2000) {
+      sendResponse({ success: true, timestamp: _lastTimeCache.value });
+      return;
+    }
+    if (!_lastTimeInflight) {
+      _lastTimeInflight = SyncManager.getLastAssignmentTime()
+        .then((v) => { _lastTimeCache = { at: Date.now(), value: v }; return v; })
+        .finally(() => { _lastTimeInflight = null; });
+    }
+    const timestamp = await _lastTimeInflight;
     sendResponse({ success: true, timestamp });
   } catch (e) {
     sendResponse({ success: false, timestamp: null });
