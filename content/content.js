@@ -2367,6 +2367,10 @@ function handleMessage(message, sender, sendResponse) {
           extensionEnabled: state.enabled
         });
         return true;
+      case 'RUN_WA_HEALTH_CHECK':
+        // Asked by the diagnostic report so it shows the page as it is now, not as it was at load.
+        sendResponse({ success: true, results: _recordWaHealth() });
+        return false;
       case 'APPLY_SCHEDULED_PHOTO_CHANGE':
         applyRealProfilePhotoChange(message.photoDataUrl)
           .then(result => sendResponse(result))
@@ -3004,11 +3008,17 @@ function waWaitForAny(names, timeoutMs) {
 
 // Self-check of what can be tested on any screen, so a WhatsApp change is noticed before anyone
 // tries a schedule. Panels that are not open cannot be checked, so those are not listed.
+// It does NOT judge until the app has rendered: the first version ran 6s after load, caught
+// Chrome still loading (0 chat rows, no navigation yet) and reported FAIL for things that were
+// simply not there yet. Not rendered means "not ready", reported as such, and re-checked.
 function runWaHealthCheck() {
-  var checks = [];
-  var nav = waFind('navProfileButton');
-  checks.push({ name: 'profile button in the navigation', ok: !!nav, via: nav ? nav.strategy : '' });
   var rows = document.querySelectorAll('[role="row"]');
+  var nav = waFind('navProfileButton');
+  if (rows.length === 0 && !nav) {
+    return [{ name: 'WhatsApp page', ok: null, via: 'not ready: still loading, or logged out. Nothing judged' }];
+  }
+  var checks = [];
+  checks.push({ name: 'profile button in the navigation', ok: !!nav, via: nav ? nav.strategy : '' });
   checks.push({ name: 'chat list rows ([role=row])', ok: rows.length > 0, via: rows.length + ' rows' });
   var rowTitles = 0;
   rows.forEach(function (r) { if (r.querySelector('span[title]')) rowTitles++; });
@@ -3018,12 +3028,19 @@ function runWaHealthCheck() {
   checks.push({ name: 'avatars inside rows', ok: rows.length === 0 || rowAvatars > 0, via: rowAvatars + ' of ' + rows.length });
   return checks;
 }
+var _waHealthRetries = 0;
 function _recordWaHealth() {
-  if (document.hidden) return;
+  if (document.hidden) return null;
   try {
     var results = runWaHealthCheck();
     chrome.storage.local.set({ dp_wa_health: { at: Date.now(), results: results } });
-  } catch (e) { /* diagnostics must never break the page */ }
+    // Still loading: look again soon, up to about 3 minutes, then fall back to the 10-minute cycle.
+    if (results[0] && results[0].ok === null && _waHealthRetries < 9) {
+      _waHealthRetries++;
+      setTimeout(_recordWaHealth, 20000);
+    }
+    return results;
+  } catch (e) { return null; /* diagnostics must never break the page */ }
 }
 setTimeout(_recordWaHealth, 6000);
 setInterval(_recordWaHealth, 10 * 60 * 1000);

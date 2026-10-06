@@ -37,7 +37,22 @@ function _dpFmtTime(ms) {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
 
+// Ask each visible WhatsApp tab to run its page check now, so the report shows the page as it is
+// at the moment of copying. Short timeout: a stuck tab must not hold up the report.
+async function refreshWaHealth() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+    const target = tabs.find((x) => x.active) || tabs[0];
+    if (!target) return;
+    await Promise.race([
+      chrome.tabs.sendMessage(target.id, { type: 'RUN_WA_HEALTH_CHECK' }),
+      new Promise((resolve) => setTimeout(resolve, 1500))
+    ]);
+  } catch (e) { /* no content script in that tab: the stored result is used */ }
+}
+
 async function buildScheduleReport() {
+  await refreshWaHealth();
   await _dpSchedLogQueue;
   const stored = await chrome.storage.local.get([DP_SCHED_LOG_KEY, 'dp_schedule', 'dp_schedule_state', 'dp_wa_health']);
   const log = stored[DP_SCHED_LOG_KEY] || [];
@@ -58,7 +73,7 @@ async function buildScheduleReport() {
   lines.push('convex queries, last 5 min since the service worker started: ' + (Object.keys(_calls).length ? Object.keys(_calls).map(k => k + ' x' + _calls[k]).join(', ') : 'none'));
   const _health = stored.dp_wa_health;
   if (_health && _health.results) {
-    lines.push('whatsapp page check (' + _dpFmtTime(_health.at) + '): ' + _health.results.map(r => (r.ok ? 'ok ' : 'FAIL ') + r.name + (r.via ? ' [' + r.via + ']' : '')).join('; '));
+    lines.push('whatsapp page check (' + _dpFmtTime(_health.at) + '): ' + _health.results.map(r => (r.ok === null ? 'NOT READY ' : r.ok ? 'ok ' : 'FAIL ') + r.name + (r.via ? ' [' + r.via + ']' : '')).join('; '));
   } else {
     lines.push('whatsapp page check: not run yet (needs a visible WhatsApp tab)');
   }

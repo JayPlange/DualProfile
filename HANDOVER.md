@@ -72,7 +72,7 @@ Changes reach other devices two ways: a Convex WebSocket subscription on `assign
 
 The service worker also reuses one `getLastAssignmentTime` answer for 2 seconds and shares an in-flight call across tabs. The reconnect handler (`_onConvexReconnect`) catches anything missed while the socket was down.
 
-To **measure** it, use **Copy diagnostic log** in the popup: it prints whether the live push is active and Convex calls per function over the last 5 minutes. The expected rates were worked out from the code; they have **not** been measured on a live account yet (section 10).
+To **measure** it, use **Copy diagnostic log** in the popup: it prints whether the live push is active and Convex calls per function over the last 5 minutes. Measured 2026-10-06 on one open WhatsApp tab per browser with the live push active: 3 `getLastAssignmentTime` calls and no `getPhotoForViewer` calls in 5 minutes in Chrome, 1 and none in Edge. The old schedule was about 62 per 5 minutes per tab (one every 4.8s).
 
 ---
 
@@ -110,7 +110,7 @@ Hazards, all measured on live pages (2026-10-02): taking the avatar wrapper out 
 
 ## 7. WhatsApp Web dependencies
 
-WhatsApp Web is not ours and has renamed things we rely on at least twice. The profile-photo flow's elements are in one registry, `WA_DEPENDENCIES` in `content.js`: ordered strategies per element, with the matching strategy written to the diagnostic log (`FALLBACK` appears when strategy 1 failed). A self-check (`runWaHealthCheck`) records every 10 minutes whether the profile button, chat rows, names and avatars can be found, and the diagnostic log prints it.
+WhatsApp Web is not ours and has renamed things we rely on at least twice. The profile-photo flow's elements are in one registry, `WA_DEPENDENCIES` in `content.js`: ordered strategies per element, with the matching strategy written to the diagnostic log (`FALLBACK` appears when strategy 1 failed). A self-check (`runWaHealthCheck`) tests whether the profile button, chat rows, names and avatars can be found. It does not judge a page that has not rendered yet (reported as NOT READY and re-checked every 20s for about 3 minutes), runs every 10 minutes, and runs again when you copy the diagnostic log, so the log shows the page as it is at that moment.
 
 | Element | Strategy 1 (verified) | Notes |
 |---|---|---|
@@ -149,7 +149,7 @@ Avatars come in two shapes: an `<img>` (real photo) or an `<svg>` with an inner 
 ## 10. Known gaps and unverified items
 
 - **Daylight saving.** The server window uses the UTC offset saved at the last Save, which goes stale after a clock change or travel (up to an hour wrong for what contacts see). The owner's own prompts use the browser's clock and are unaffected.
-- **Poll rates are unmeasured.** Section 4's numbers come from reading the code. Check the diagnostic log on a real session; if the live push is `INACTIVE` in normal use, find out why.
+- **Poll rate with the live push down is unmeasured.** The push was active in both browsers when measured; the 3s to 60s backoff has only been read in the code. If the live push shows `INACTIVE` in normal use, find out why.
 - **Overnight windows are tested** in the browsers (start side and after-midnight side) and by unit tests. What a contact sees from the server during an overnight window has not been seen on a second account.
 - **Avatar click viewer on Pass 1 rows** (geometry test) is new and has not been exercised on a live page. **Unverified.**
 - **Sidebar overlays on no-photo rows** are now drawn once (Pass 1 only). Also **unverified** on a live page.
