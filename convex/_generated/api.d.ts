@@ -18,6 +18,7 @@ import type * as cloudinaryOrphanQueries from "../cloudinaryOrphanQueries.js";
 import type * as cloudinaryOrphanReport from "../cloudinaryOrphanReport.js";
 import type * as migrations from "../migrations.js";
 import type * as photos from "../photos.js";
+import type * as scheduleWindow from "../scheduleWindow.js";
 import type * as schedules from "../schedules.js";
 import type * as userPrefs from "../userPrefs.js";
 import type * as users from "../users.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   cloudinaryOrphanReport: typeof cloudinaryOrphanReport;
   migrations: typeof migrations;
   photos: typeof photos;
+  scheduleWindow: typeof scheduleWindow;
   schedules: typeof schedules;
   userPrefs: typeof userPrefs;
   users: typeof users;

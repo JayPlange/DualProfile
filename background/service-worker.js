@@ -1,5 +1,96 @@
 // DualProfile Service Worker - Local + P2P Sync
 
+// ── Schedule diagnostic log ───────────────────────────────────────────────────
+// Timestamped events for the Scheduled Photos flow, kept in chrome.storage.local
+// (last 300 entries) so a person can copy them from the popup and paste them
+// into a bug report. Written by the service worker and, through the
+// SCHEDULE_LOG message, by the WhatsApp content script. Consecutive identical
+// 'tick' entries are merged into one with a count, so the every-minute alarm
+// does not push real events out of the buffer.
+const DP_SCHED_LOG_KEY = 'dp_schedule_log';
+const DP_SCHED_LOG_MAX = 300;
+let _dpSchedLogQueue = Promise.resolve();
+
+function dpSchedLog(source, event, detail) {
+  const entry = { t: Date.now(), s: source, e: event, d: detail === undefined ? '' : String(detail) };
+  _dpSchedLogQueue = _dpSchedLogQueue.then(async () => {
+    try {
+      const stored = await chrome.storage.local.get(DP_SCHED_LOG_KEY);
+      const log = stored[DP_SCHED_LOG_KEY] || [];
+      const last = log[log.length - 1];
+      if (event === 'tick' && last && last.e === 'tick' && last.s === source && last.d === entry.d) {
+        last.n = (last.n || 1) + 1;
+        last.lastT = entry.t;
+      } else {
+        log.push(entry);
+      }
+      if (log.length > DP_SCHED_LOG_MAX) log.splice(0, log.length - DP_SCHED_LOG_MAX);
+      await chrome.storage.local.set({ [DP_SCHED_LOG_KEY]: log });
+    } catch (_) { /* logging must never break the flow it observes */ }
+  });
+  return _dpSchedLogQueue;
+}
+
+function _dpFmtTime(ms) {
+  const d = new Date(ms);
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
+
+// Ask each visible WhatsApp tab to run its page check now, so the report shows the page as it is
+// at the moment of copying. Short timeout: a stuck tab must not hold up the report.
+async function refreshWaHealth() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+    const target = tabs.find((x) => x.active) || tabs[0];
+    if (!target) return;
+    await Promise.race([
+      chrome.tabs.sendMessage(target.id, { type: 'RUN_WA_HEALTH_CHECK' }),
+      new Promise((resolve) => setTimeout(resolve, 1500))
+    ]);
+  } catch (e) { /* no content script in that tab: the stored result is used */ }
+}
+
+async function buildScheduleReport() {
+  await refreshWaHealth();
+  await _dpSchedLogQueue;
+  const stored = await chrome.storage.local.get([DP_SCHED_LOG_KEY, 'dp_schedule', 'dp_schedule_state', 'dp_wa_health']);
+  const log = stored[DP_SCHED_LOG_KEY] || [];
+  const alarm = await chrome.alarms.get('dp-schedule-check').catch(() => null);
+  const waTabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' }).catch(() => []);
+  const now = Date.now();
+  const lines = [];
+  lines.push('DualProfile schedule diagnostic');
+  lines.push('version: ' + chrome.runtime.getManifest().version);
+  lines.push('browser: ' + navigator.userAgent);
+  lines.push('timezone: ' + Intl.DateTimeFormat().resolvedOptions().timeZone + ' (offset min ' + new Date().getTimezoneOffset() + ')');
+  lines.push('report time: ' + new Date(now).toString());
+  lines.push('schedule: ' + JSON.stringify(stored.dp_schedule || null));
+  lines.push('schedule state: ' + JSON.stringify(stored.dp_schedule_state || null));
+  lines.push('alarm dp-schedule-check: ' + (alarm ? 'next ' + _dpFmtTime(alarm.scheduledTime) + ', period ' + alarm.periodInMinutes + ' min' : 'MISSING'));
+  const _calls = (typeof ConvexHTTP !== 'undefined' && ConvexHTTP.statsSummary) ? ConvexHTTP.statsSummary(5 * 60 * 1000) : {};
+  lines.push('live push (WebSocket): ' + (_liveSubActive ? 'active' : 'INACTIVE'));
+  lines.push('convex queries, last 5 min since the service worker started: ' + (Object.keys(_calls).length ? Object.keys(_calls).map(k => k + ' x' + _calls[k]).join(', ') : 'none'));
+  const _health = stored.dp_wa_health;
+  if (_health && _health.results) {
+    lines.push('whatsapp page check (' + _dpFmtTime(_health.at) + '): ' + _health.results.map(r => (r.ok === null ? 'NOT READY ' : r.ok ? 'ok ' : 'FAIL ') + r.name + (r.via ? ' [' + r.via + ']' : '')).join('; '));
+  } else {
+    lines.push('whatsapp page check: not run yet (needs a visible WhatsApp tab)');
+  }
+  lines.push('whatsapp tabs: ' + (waTabs.length ? waTabs.map(x => `#${x.id} status=${x.status} active=${x.active} discarded=${x.discarded}`).join('; ') : 'none open'));
+  lines.push('');
+  lines.push('time (local)   +gap   source event detail');
+  let prev = null;
+  for (const e of log) {
+    const gap = prev === null ? '' : '+' + ((e.t - prev) / 1000).toFixed(1) + 's';
+    const count = e.n ? ` x${e.n} (last ${_dpFmtTime(e.lastT)})` : '';
+    lines.push(`${_dpFmtTime(e.t)} ${gap.padStart(8)} ${e.s} ${e.e}${count} ${e.d}`.trimEnd());
+    prev = e.t;
+  }
+  return lines.join('\n');
+}
+
+
 // ── Service Worker Keepalive ──────────────────────────────────────────────────
 // MV3 service workers are killed after ~30s of inactivity. chrome.alarms is the
 // only reliable way to keep the SW alive across a session. We create a repeating
@@ -62,6 +153,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // that can make this script start fresh, a real browser restart, the
 // service worker waking from idle, or a manual/automatic extension
 // reload, not just the one case (onInstalled) that was already handled.
+dpSchedLog('sw', 'sw_start', 'service worker script started');
 chrome.storage.local.get('dp_schedule', (result) => {
   if (result.dp_schedule && result.dp_schedule.enabled) {
     reschedulePhotoAlarms(result.dp_schedule);
@@ -71,6 +163,7 @@ chrome.storage.local.get('dp_schedule', (result) => {
 
 // Import libraries
 importScripts('../lib/tier-system.js');
+importScripts('../lib/schedule-window.js');  // isInScheduleWindow (shared window rule, overnight-aware)
 importScripts('../lib/config.js');
 importScripts('../lib/crypto-utils.js');
 importScripts('../lib/device-auth.js');  // must precede convex-http.js
@@ -477,6 +570,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'SCHEDULE_TOAST_DECISION':
       handleScheduleDecision(message.decision);
       return false;
+
+    case 'SCHEDULE_LOG':
+      dpSchedLog('page', message.event, message.detail);
+      return false;
+
+    case 'GET_SCHEDULE_LOG':
+      buildScheduleReport().then(text => sendResponse({ success: true, text }))
+        .catch(e => sendResponse({ success: false, error: e.message }));
+      return true;
+
+    case 'CLEAR_SCHEDULE_LOG':
+      _dpSchedLogQueue = _dpSchedLogQueue.then(() => chrome.storage.local.remove(DP_SCHED_LOG_KEY));
+      _dpSchedLogQueue.then(() => sendResponse({ success: true }));
+      return true;
 
     case 'SCHEDULE_BADGE_ACKNOWLEDGED':
       chrome.action.setBadgeText({ text: '' });
@@ -1463,10 +1570,23 @@ async function handleRemoveSyncedAssignment(message, sendResponse) {
 }
 
 // O(1) version check — viewer polls every 800ms to detect any assignment change
+// Several WhatsApp tabs (or two quick polls) share one Convex call: an answer is reused for 2s, and
+// a call already in flight is awaited instead of repeated.
+let _lastTimeCache = { at: 0, value: null };
+let _lastTimeInflight = null;
 async function handleGetLastAssignmentTime(sendResponse) {
   await _syncInitPromise;
   try {
-    const timestamp = await SyncManager.getLastAssignmentTime();
+    if (Date.now() - _lastTimeCache.at < 2000) {
+      sendResponse({ success: true, timestamp: _lastTimeCache.value });
+      return;
+    }
+    if (!_lastTimeInflight) {
+      _lastTimeInflight = SyncManager.getLastAssignmentTime()
+        .then((v) => { _lastTimeCache = { at: Date.now(), value: v }; return v; })
+        .finally(() => { _lastTimeInflight = null; });
+    }
+    const timestamp = await _lastTimeInflight;
     sendResponse({ success: true, timestamp });
   } catch (e) {
     sendResponse({ success: false, timestamp: null });
@@ -2117,6 +2237,17 @@ async function handleSaveSchedule(message, sendResponse) {
     // Any notified/applied bookkeeping from before this edit no longer
     // means anything -- the window or target slot may have just changed.
     await chrome.storage.local.remove('dp_schedule_state');
+    // Saving is not a boundary. With the state cleared, the first alarm tick
+    // used to see "not applied, not asked" and prompt for whatever slot the
+    // schedule wants right now, usually the OUTSIDE-window photo when saving
+    // ahead of the start time, which is why a second prompt then arrived at
+    // the real start time. Record the current slot as the baseline so only
+    // real boundary crossings prompt.
+    if (enabled) {
+      const { inWindow, targetPhoto } = computeScheduleTarget(schedule, new Date());
+      await chrome.storage.local.set({ dp_schedule_state: { notifiedSlot: targetPhoto, baseline: true } });
+      dpSchedLog('sw', 'save_baseline', `inWindow=${inWindow} baseline slot=${targetPhoto}, no prompt for it`);
+    }
     chrome.action.setBadgeText({ text: '' });
     // Reschedule alarms with updated schedule
     await reschedulePhotoAlarms(schedule);
@@ -2164,23 +2295,26 @@ async function handleDeleteSchedule(message, sendResponse) {
 //   appliedSlot  — the slot that was actually confirmed and applied last
 //                  time. Once the real photo matches this, there's
 //                  nothing to do until the schedule crosses a new boundary.
+// Which photo the schedule says should be on the profile right now.
+function computeScheduleTarget(schedule, now) {
+  const inWindow = isInScheduleWindow(schedule, now.getDay(), now.getHours() * 60 + now.getMinutes());
+  const targetPhoto = inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
+  return { inWindow, targetPhoto };
+}
+
 async function checkScheduleAndSwitch() {
   try {
     const stored = await chrome.storage.local.get(['dp_schedule', 'dp_schedule_state']);
     const schedule = stored.dp_schedule;
     if (!schedule || !schedule.enabled) return;
 
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0=Sun
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = schedule.startHour * 60 + schedule.startMinute;
-    const endMinutes = schedule.endHour * 60 + schedule.endMinute;
-    const inWindow = schedule.days.includes(dayOfWeek) && currentMinutes >= startMinutes && currentMinutes < endMinutes;
-    const targetPhoto = inWindow ? schedule.photoNumber : (schedule.photoNumber === 1 ? 2 : 1);
+    const { inWindow, targetPhoto } = computeScheduleTarget(schedule, new Date());
 
     const scheduleState = stored.dp_schedule_state || {};
-    if (scheduleState.appliedSlot === targetPhoto) return;   // already switched, nothing to do
-    if (scheduleState.notifiedSlot === targetPhoto) return;  // already asked, waiting on the person
+    const tickInfo = `inWindow=${inWindow} target=${targetPhoto} applied=${scheduleState.appliedSlot ?? '-'} notified=${scheduleState.notifiedSlot ?? '-'}`;
+    if (scheduleState.appliedSlot === targetPhoto) { dpSchedLog('sw', 'tick', tickInfo + ' skip=already_applied'); return; }
+    if (scheduleState.notifiedSlot === targetPhoto) { dpSchedLog('sw', 'tick', tickInfo + ' skip=already_asked'); return; }
+    dpSchedLog('sw', 'boundary_detected', tickInfo);
 
     await chrome.storage.local.set({
       dp_schedule_state: { ...scheduleState, notifiedSlot: targetPhoto },
@@ -2209,6 +2343,7 @@ async function checkScheduleAndSwitch() {
     // open anywhere for it to appear in.
     const waTabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
 
+    dpSchedLog('sw', 'ask', waTabs.length > 0 ? `in-page toast to ${waTabs.length} tab(s)` : 'OS notification (no WhatsApp tab)');
     if (waTabs.length > 0) {
       for (const tab of waTabs) {
         chrome.tabs.sendMessage(tab.id, {
@@ -2243,16 +2378,21 @@ async function checkScheduleAndSwitch() {
 // piece that still needs the real DOM selectors from a live inspection
 // before it can do anything (see content.js).
 async function applyScheduledPhoto(targetSlot) {
+  const _applyStart = Date.now();
+  dpSchedLog('sw', 'apply_start', 'slot ' + targetSlot);
   const stateResult = await swGet('state');
   const photoDataUrl = stateResult?.state?.photos?.[`photo${targetSlot}`];
   if (!photoDataUrl) {
+    dpSchedLog('sw', 'apply_fail', 'NO_PHOTO_FOR_SLOT ' + targetSlot);
     console.warn('[DualProfile][SW] No photo uploaded for slot', targetSlot, '-- nothing to apply');
     return { success: false, error: 'NO_PHOTO_FOR_SLOT' };
   }
 
   let [tab] = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
 
+  if (tab) dpSchedLog('sw', 'tab_found', `#${tab.id} status=${tab.status} active=${tab.active} discarded=${tab.discarded}`);
   if (!tab) {
+    dpSchedLog('sw', 'tab_create', 'no WhatsApp tab open, opening one');
     tab = await chrome.tabs.create({ url: 'https://web.whatsapp.com/', active: true });
     await new Promise((resolve) => {
       const listener = (tabId, info) => {
@@ -2268,6 +2408,7 @@ async function applyScheduledPhoto(targetSlot) {
     // isn't signalled back to us here, so this is a fixed wait, not a
     // real handshake -- worth replacing with a proper ready-ping once
     // the DOM side of this exists and we know what "ready" looks like.
+    dpSchedLog('sw', 'tab_loaded', 'complete, waiting 4s for WhatsApp init');
     await new Promise((resolve) => setTimeout(resolve, 4000));
   } else {
     await chrome.tabs.update(tab.id, { active: true });
@@ -2275,12 +2416,15 @@ async function applyScheduledPhoto(targetSlot) {
   }
 
   try {
+    dpSchedLog('sw', 'msg_to_page', 'APPLY_SCHEDULED_PHOTO_CHANGE, ' + (Date.now() - _applyStart) + 'ms since apply_start');
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: 'APPLY_SCHEDULED_PHOTO_CHANGE',
       photoDataUrl,
     });
+    dpSchedLog('sw', 'apply_result', JSON.stringify(response) + ', total ' + (Date.now() - _applyStart) + 'ms');
     return response || { success: false, error: 'NO_RESPONSE' };
   } catch (e) {
+    dpSchedLog('sw', 'apply_fail', 'CONTENT_SCRIPT_UNREACHABLE: ' + e.message + ', total ' + (Date.now() - _applyStart) + 'ms');
     console.warn('[DualProfile][SW] Content script not reachable for photo change:', e.message);
     return { success: false, error: 'CONTENT_SCRIPT_UNREACHABLE' };
   }
@@ -2292,6 +2436,7 @@ async function applyScheduledPhoto(targetSlot) {
 async function handleScheduleDecision(decision) {
   const stored = await chrome.storage.local.get('dp_schedule_state');
   const targetSlot = stored.dp_schedule_state?.notifiedSlot;
+  dpSchedLog('sw', 'decision', `${decision}, notifiedSlot=${targetSlot ?? '-'}`);
   if (!targetSlot) return;
 
   if (decision === 'switch') {
@@ -2333,6 +2478,14 @@ async function handleScheduleDecision(decision) {
       // either. It'll show up again if the schedule crosses to a new
       // boundary, or the person can open the popup and switch manually.
       console.warn('[DualProfile][SW] Scheduled photo failed to stage:', result.error);
+      // Silent failure was the reported symptom. Say which step failed.
+      chrome.notifications.create('dp-notif-schedule-failed', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title: 'DualProfile: scheduled photo not opened',
+        message: String(result.error || 'Unknown error') + '. Open the popup to switch manually.',
+        priority: 1,
+      });
     }
   } else {
     // "not_now" -- a real decision, not a failure to notice. notifiedSlot
@@ -2349,11 +2502,25 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
   await handleScheduleDecision(buttonIndex === 0 ? 'switch' : 'not_now');
 });
 
+// The schedule check runs once a minute, aligned to the start of each clock
+// minute, so a 10:00 boundary is seen at 10:00:00.5 rather than anywhere up to
+// a minute later. Measured on live browsers 2026-10-02: with an unaligned
+// alarm the start-time prompt arrived 20s and 52s late, because the alarm's
+// phase was whenever it was last created (saving the schedule, or the service
+// worker restarting). An alarm that is already aligned is left alone, so
+// service worker restarts no longer shift its phase.
 async function reschedulePhotoAlarms(schedule) {
-  await chrome.alarms.clear('dp-schedule-check');
-  if (schedule && schedule.enabled) {
-    chrome.alarms.create('dp-schedule-check', { periodInMinutes: 1 });
+  const existing = await chrome.alarms.get('dp-schedule-check');
+  if (!schedule || !schedule.enabled) {
+    if (existing) await chrome.alarms.clear('dp-schedule-check');
+    return;
   }
+  const isAligned = !!existing && existing.periodInMinutes === 1 && (existing.scheduledTime % 60000) < 2000;
+  if (isAligned) return;
+  await chrome.alarms.clear('dp-schedule-check');
+  const nextMinute = Math.ceil((Date.now() + 1) / 60000) * 60000 + 500;
+  chrome.alarms.create('dp-schedule-check', { when: nextMinute, periodInMinutes: 1 });
+  dpSchedLog('sw', 'alarm_reset', 'dp-schedule-check aligned to the minute, first fire ' + _dpFmtTime(nextMinute) + ', period 1 min');
 }
 
 // ── Export / Import ───────────────────────────────────────────────────────────

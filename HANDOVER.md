@@ -1,215 +1,182 @@
-# DualProfile — Claude Code Handover
-**Date:** July 2026  
-**From:** Claude (claude.ai chat session)  
-**To:** Claude Code Max  
-**Product:** DualProfile Chrome Extension + Landing Page  
-**Current version:** v1.0.19  
+# DualProfile: Handover
+
+**Updated:** October 2026 (v1.0.36)
+**Product:** DualProfile, a Chrome/Edge extension for WhatsApp Web, plus a landing page.
+**This file replaces** the v1.0.19 handover. It describes the code as it is now. Anything not verified is marked **unverified**.
 
 ---
 
-## Repos
+## 1. Where things live
 
-| Repo | Purpose |
+| What | Where |
 |---|---|
-| `github.com/JayPlange/DualProfile` | Chrome extension |
-| `github.com/JayPlange/dualprofile-landing` | Landing page (Next.js, Vercel) |
+| Extension | `github.com/JayPlange/DualProfile` |
+| Landing page | `github.com/JayPlange/dualprofile-landing` (Next.js, Vercel) |
+| Convex **production** | `keen-goldfinch-408` (this is what the extension talks to; set in `lib/config.js`) |
+| Convex **dev** | `tremendous-iguana-961` (`CONVEX_DEPLOYMENT` in `.env.local`; the extension does not use it) |
+| Chrome Web Store ID | `mdlhdncmaeepcejdbpnjpjlmagmmpkpc` |
+| Payments | Lemon Squeezy; variant ID and checkout URL are in `lib/config.js` |
 
-**GitHub PAT:** `[REDACTED — generate new PAT from GitHub Settings]`  
-**Landing page:** https://vivaup.org  
-**CWS ID:** `mdlhdncmaeepcejdbpnjpjlmagmmpkpc`  
-**Convex prod:** `keen-goldfinch-408.convex.cloud`  
-**Lemon Squeezy product IDs:** Pro `b1aa498c` · Annual `eedf7e9a` · Lifetime `4f5df750`  
-
----
-
-## Extension Stack
-
-```
-React / TypeScript / TailwindCSS (landing page)
-Manifest V3 content script
-Convex (backend/storage)
-Cloudinary (photo storage)
-Lemon Squeezy (payments)
-OpenAI API
-```
+No credentials belong in this file. Generate a fresh GitHub token when one is needed.
 
 ---
 
-## Pricing Structure (as of v1.0.19)
+## 2. What the product does
 
-| Tier | Price | Features |
+Three separate features. Keep them apart in your head, because they fail in different ways.
+
+1. **Local assignment.** You assign one of your two photos to a contact. You see it on your own screen. Nothing is sent anywhere unless sync is on.
+2. **P2P assignment.** If the contact also has the extension, they see the photo you assigned to them. Needs the extension on both sides. Delivered through Convex.
+3. **Scheduled photos.** At the start and end of a time window, the extension prompts you to switch your **real WhatsApp profile photo** between photo 1 and photo 2. Everyone who sees your profile sees it, with or without the extension. The extension never taps the final approve button: you do (section 5).
+
+There is also a viewer-side rule on the server: while your window is running, a contact with the extension who has no assignment from you sees the scheduled photo (`getScheduleFallbackPhotoNumber` in `convex/assignments.ts`). That is deliberate; scheduled photos are for everybody.
+
+### Tiers (current)
+Two tiers. **Free**: unlimited contacts, scheduled photos, both photo slots. **Pro**: £9.99 one-time, adds bulk assign, photo history, export/import, multi-device, priority support (`lib/tier-system.js`, `lib/config.js`). Legacy Annual and Lifetime buyers resolve to Pro, so never remove those keys. `UNLIMITED` is `null`, not `Infinity`: `Infinity` becomes `null` through `chrome.runtime.sendMessage` and used to silently reimpose a one-contact cap. Compare with `isUnlimited()`.
+
+---
+
+## 3. Architecture
+
+```
+manifest.json            MV3. Permissions: storage, activeTab, scripting, tabs, alarms, notifications.
+background/service-worker.js   Messages, Convex calls, alarms, schedule logic, notifications, diagnostic log.
+content/content.js       Runs inside web.whatsapp.com. Overlays, P2P polling, the profile-photo flow. ~8,000 lines.
+content/notification-interceptor.js   Loaded at document_start alongside content.js.
+popup/                   popup.html / popup.js, onboarding, theme (worldcupTheme.js, see section 11).
+lib/                     config, tier-system, storage, sync-manager, convex-http, convex-sync (WebSocket),
+                         device-auth, schedule-window, cloudinary-client, lemonsqueezy-client, crypto-utils.
+convex/                  Backend (TypeScript). Tables: users, devices, photos, assignments, schedules,
+                         userPrefs, pendingClaims, cloudinaryDeleteFailures.
+lib/__tests__/           Jest: tier-system, schedule-window, wa-dependencies.
+```
+
+The service worker is a classic script (no modules): it loads `lib/*.js` with `importScripts`, so their top-level names are shared globals. Content scripts cannot call Convex directly; they message the service worker (`GET_REMOTE_PHOTOS_BATCH`, `GET_LAST_ASSIGNMENT_TIME`, `SAVE_SCHEDULE`, and about 40 others, listed in the `switch` in `chrome.runtime.onMessage`).
+
+**Reloading the extension leaves the old content script alive in open WhatsApp tabs.** `onInstalled` injects a new one, and the "already loaded" guard is a window variable in an isolated world, so it does not see the old copy. After any extension reload, hard-refresh the WhatsApp tab (Ctrl+Shift+R). Skipping this may leave two copies of the sidebar code running in one tab (from reading the code; not reproduced on a live page).
+
+---
+
+## 4. Network and polling
+
+Changes reach other devices two ways: a Convex WebSocket subscription on `assignments:getLastAssignmentTime` (the live push, set up in `_startLiveSubscription`), and an HTTP poll that is only a safety net.
+
+**Poll schedule (changed 2026-10-04).** It used to ask Convex every ~4.8s per tab with the push healthy, and every 800ms without it, and re-queried every known contact's photo every 30s. That does not scale. Now, in `content.js`:
+
+| Situation | Convex poll |
+|---|---|
+| Live push healthy | About every 2 minutes, jittered ±20% |
+| Live push down | Backoff 3s, 6s, 12s, 30s, 60s (resets when anything changes), jittered |
+| Tab hidden | None; one catch-up poll when it becomes visible |
+| Idle re-query of a known contact's photo | Only if the cache is older than 10 minutes (`idleRefetchTTL`); the in-chat lookup still uses `cacheTTL` (30s) |
+
+The service worker also reuses one `getLastAssignmentTime` answer for 2 seconds and shares an in-flight call across tabs. The reconnect handler (`_onConvexReconnect`) catches anything missed while the socket was down.
+
+To **measure** it, use **Copy diagnostic log** in the popup: it prints whether the live push is active and Convex calls per function over the last 5 minutes. Measured 2026-10-06 on one open WhatsApp tab per browser with the live push active: 3 `getLastAssignmentTime` calls and no `getPhotoForViewer` calls in 5 minutes in Chrome, 1 and none in Edge. The old schedule was about 62 per 5 minutes per tab (one every 4.8s).
+
+---
+
+## 5. Scheduled photos, in detail
+
+**Window rule** (`lib/schedule-window.js`, copied in `convex/scheduleWindow.ts`): start before end is a same-day window on each ticked day. Start after end runs **overnight**, and the ticked day is the day it **starts** (Friday 22:00 to 06:00 runs into Saturday morning). Start equal to end is empty. The two copies are tested to be textually identical; change both. Times are the owner's local time; the server uses the UTC offset saved at the last Save.
+
+**Alarm.** `dp-schedule-check` fires once a minute, aligned to the clock minute (`:00.5`), so a 10:00 boundary is seen at 10:00:00.5. Re-creating the alarm is skipped if it is already aligned, so service worker restarts do not shift it.
+
+**State** (`dp_schedule_state`): `appliedSlot` is the photo already staged, `notifiedSlot` the slot already asked about. Saving a schedule clears the state and records the current slot as a baseline, so saving is not a boundary and does not prompt (this fixed a duplicate early prompt).
+
+**Prompt to staged photo.** At a boundary the service worker shows an in-page toast (or an OS notification if no WhatsApp tab is open). "Switch now" runs `applyScheduledPhoto`, which messages the content script, which runs `applyRealProfilePhotoChange`:
+
+1. Click the profile button in the left navigation.
+2. Wait for whichever appears first: the avatar picker, the Profile row, or "View photo". Click the Profile row or "View photo" if that is what appeared.
+3. Find the avatar picker.
+4. Find the avatar's file input: **the one nearest the picker**, not the first match.
+5. Set the file and dispatch `change`; wait for the crop screen. **The person taps approve.**
+
+**Why the extension never taps approve.** On 2026-08-02 a scripted click on that button reported success but saved nothing; every real tap saved. Do not "fix" this. Also do not automate switching silently: unattended, identical account changes at fixed minutes across many accounts is the pattern account-integrity systems flag, and the risk lands on users' WhatsApp accounts. WhatsApp's terms were **not** reviewed; check them before reconsidering.
+
+---
+
+## 6. Sidebar overlays
+
+Two code paths draw P2P photos on chat-list rows, and they must not both act on one row.
+
+- **Pass 1 `applyOverlayToRow`**: swaps the picture on WhatsApp's own avatar `<img>`, or injects an `<img>` over the default SVG avatar. It tags the image `data-dp-phone`.
+- **Pass 2 `processNewSidebarRow`**: builds an overlay `<div data-dualprofile-sidebar-overlay>` over the avatar. It now skips any row with an `img[data-dp-phone]` and only handles rows Pass 1 could not resolve a phone for.
+- Clicking an avatar Pass 1 owns opens the DualProfile viewer through a geometry test in `installDualProfileClickHandler` (is the click inside the avatar's rectangle).
+
+Hazards, all measured on live pages (2026-10-02): taking the avatar wrapper out of flow (`position:absolute`) collapses a content-sized container to 0x0; and a `min-height` pin on WhatsApp's aspect-ratio container (`padding-top: 100%`) **adds** to the padding and doubles its height. Do not re-add either.
+
+---
+
+## 7. WhatsApp Web dependencies
+
+WhatsApp Web is not ours and has renamed things we rely on at least twice. The profile-photo flow's elements are in one registry, `WA_DEPENDENCIES` in `content.js`: ordered strategies per element, with the matching strategy written to the diagnostic log (`FALLBACK` appears when strategy 1 failed). A self-check (`runWaHealthCheck`) tests whether the profile button, chat rows, names and avatars can be found. It does not judge a page that has not rendered yet (reported as NOT READY and re-checked every 20s for about 3 minutes), runs every 10 minutes, and runs again when you copy the diagnostic log, so the log shows the page as it is at that moment.
+
+| Element | Strategy 1 (verified) | Notes |
 |---|---|---|
-| Free | £0 | 1 contact, manual assignment |
-| Pro | £9.99/mo | Unlimited contacts + Photo History & Revert |
-| Annual | £59/yr | Pro + Bulk Assignment + Scheduled Photos |
-| Lifetime | £79 one-time | Annual + Export/Import + Multi-Device Sync + Priority Support + all future features |
+| Profile button | `[data-testid="navbar-item-profile-photo"]` (Business, 2026-09-22) | Personal accounts have no such testid: use the **last button in `navbar-footer-section`** (Media, then the profile button; 2026-09-29). Last resort: footer button labelled "You" (English). |
+| Profile row | `[data-testid="li-profile"]` (personal, 2026-09-29) | A settings list; clicking it opens the editor. Business opens the editor directly. |
+| Avatar picker | `[data-testid="profile-pic-picker"]` (120x120, 2026-10-02) | |
+| Photo input | `input[type=file]` with accept `image/gif,image/jpeg,image/jpg,image/png` | Business has **two** (cover and avatar). Take the one nearest the picker (1 level up; the cover's is 5 up). Fallback: a single-file image input. |
+| Crop approve button | `button[aria-label="Submit image"]` (English) | If missing but a dialog is open, the flow reports an **unverified** success instead of failing. Whether the crop screen is a `[role=dialog]` has **not** been checked. |
+| "View photo" | `[role=button][aria-label="View photo"]` (English) | Only when the account already has a photo. |
 
-**Trial system: REMOVED.** No more 3-day trial. Free is free forever with 1 contact.
+Avatars come in two shapes: an `<img>` (real photo) or an `<svg>` with an inner `<image>` / default glyph. `setImageSource()` and `getImageSrc()` handle both; a bare `img.src =` does nothing on SVG.
 
----
-
-## Feature Flags in tier-system.js
-
-```js
-LIMITS = {
-  free:     { maxContacts:1, photoHistory:false, bulkAssign:false, schedule:false, exportImport:false, multiDevice:false, priority:false },
-  pro:      { maxContacts:Infinity, photoHistory:true, bulkAssign:false, schedule:false, exportImport:false, multiDevice:false, priority:false },
-  annual:   { maxContacts:Infinity, photoHistory:true, bulkAssign:true, schedule:true, exportImport:false, multiDevice:false, priority:false },
-  lifetime: { maxContacts:Infinity, photoHistory:true, bulkAssign:true, schedule:true, exportImport:true, multiDevice:true, priority:true },
-}
-```
-
-Tier is detected via `state.meta.isLifetime`, `state.meta.isAnnual`, `state.meta.isPro` from Lemon Squeezy webhook metadata.
+**Rule:** before changing any selector, measure the real page (console snippet or screenshot), as in section 9. Do not guess from memory of WhatsApp's markup.
 
 ---
 
-## What Was Built This Session
+## 8. Dev workflow
 
-### 1. World Cup 2026 Event (`popup/worldcupTheme.js`)
-- 22-day tournament theme (Jun 29 – Jul 19 2026)
-- Each day: country flag, colors, cultural background pattern, identity slogan
-- Cultural patterns: kente (Ghana), carnival (Brazil), fleur-de-lis (France), sol de mayo (Argentina), moorish mosaic (Spain), azulejo (Portugal), bauhaus (Germany), lace (Belgium), tulip (Netherlands), seigaiha (Japan), stars+stripes (USA), aztec (Mexico), zellige (Morocco), mochila (Colombia), nordic (Sweden/Norway), waves (Cape Verde), arabesque (Algeria), hieroglyph (Egypt), aboriginal (Australia? — replaced), viking (Norway)
-- On new install: crowd roar sound + kick sound (fires on "Let's go" button tap — guaranteed user gesture), confetti, welcome screen
-- On existing user first open: one-time modal with confetti
-- Collection system: unlock 1 country per day, badges at 1/11/22 days
-- Share feature: native share or clipboard copy
-- Special days: Final Day (Jul 19) gold trophy theme + confetti
-- All storage under `dp_wc_*` prefix — zero collision with core extension
-- Spins ⚽ badge on logo, slim ticker below navbar in popup
-
-**Current schedule (Jul 2026 — post QF):**
-
-| Date | Country | Pattern |
-|---|---|---|
-| Jun 29 | Ghana 🇬🇭 | Kente |
-| Jun 30 | France 🇫🇷 | Fleur-de-lis |
-| Jul 1 | Argentina 🇦🇷 | Sol de Mayo |
-| Jul 2 | Spain 🇪🇸 | Moorish mosaic |
-| Jul 3 | Belgium 🇧🇪 | Bruges lace |
-| Jul 4 | USA 🇺🇸 | Stars & Stripes (Independence Day) |
-| Jul 5 | England 🏴󠁧󠁢󠁥󠁮󠁧󠁿 | St George cross |
-| Jul 6 | Morocco 🇲🇦 | Zellige |
-| Jul 7 | Germany 🇩🇪 | Bauhaus |
-| Jul 8 | Ivory Coast 🇨🇮 | Kente |
-| Jul 9 | Netherlands 🇳🇱 | Dutch tulip |
-| Jul 10 | Mexico 🇲🇽 | Aztec |
-| Jul 11 | Colombia 🇨🇴 | Wayuu mochila |
-| Jul 12 | Sweden 🇸🇪 | Nordic cross |
-| Jul 13 | Switzerland 🇨🇭 | Swiss cross |
-| Jul 14 | Cape Verde 🇨🇻 | Atlantic waves |
-| Jul 15 | Norway 🇳🇴 | Viking runes |
-| Jul 16 | Japan 🇯🇵 | Seigaiha |
-| Jul 17 | Portugal 🇵🇹 | Azulejo |
-| Jul 18 | Algeria 🇩🇿 | Arabesque |
-| Jul 19 | Final Day 🏆 | Confetti |
-
-**Note:** Update schedule after each round of eliminations. Replace eliminated teams with culturally rich alternatives or remaining tournament teams.
-
-### 2. Bulk Assignment Feature
-- **Contacts tab:** "☰ Bulk select" toggle button (pill-shaped, green border)
-- Enters bulk mode → checkboxes appear on each contact
-- "Select all" → "→ P1" / "→ P2" assigns entire selection in one tap
-- Pro users see toggle at 50% opacity → clicks fire upgrade modal with "Annual" hint
-- Tier badge shown on locked cards: "🔒 Pro" / "🔒 Annual" / "🔒 Lifetime"
-- `applyProCardLock(sectionId, formId, hasAccess, tierHint)` — tierHint drives badge + modal
-
-### 3. Trial System Removed
-- `initializeTrial`, `updateTrialBar`, `startTrialCountdown` all stubbed as no-ops
-- Trial bar hidden
-- Free tier is clean: 1 contact, no countdown
-
-### 4. UI Modernisation
-- Bulk buttons: pill-shaped, matching extension design language
-- Time inputs in Settings: dark card style, green focus ring, no browser chrome
-- Pro card tier badges
-- Upgrade modal accepts `tierHint` for context-aware messaging
-
-### 5. Landing Page (vivaup.org)
-- Trial removed from all copy across 9 languages (EN ES FR PT DE HI ZH JA RU)
-- Free: "1 contact, free forever"
-- Annual card: bulk assignment highlighted as ⚡ top feature
-- Lifetime card: bulk + future features
-- FAQ updated: Pro vs Annual explanation
-- All CTAs: "Install free" (was "Start free trial")
-- World Cup announcement bar above hero (slim ticker fixed below navbar)
-- Cultural band between navbar and hero showing today's country, pattern, flag, slogan
-- Confetti + crowd sound fires on first scroll/click per session
-- Privacy copy fixed: removed false "stored locally / nothing uploaded" claim
+- **Tests:** `npx jest` (61 tests at the time of writing). `content.js` and the service worker are not modules, so tests cut the relevant block out of the source and run it against a fake `document` (see `wa-dependencies.test.js`). Real behaviour still needs a real WhatsApp Web session.
+- **Two accounts, two browsers** are the test rig: personal account in Chrome, Business in Edge, one unpacked extension folder loaded in both. Reload the extension, then hard-refresh WhatsApp.
+- **Convex:** `npx convex dev --once` pushes to **dev** (also runs the type check, safe). `npx convex deploy` pushes to **production** and asks for confirmation; read the target it prints. It deploys everything in `convex/`, not just the file you changed.
+- **PowerShell gotchas:** `git diff > file` writes UTF-16 and garbles non-ASCII text; use `git diff | Out-File -Encoding utf8 file`. Windows line-ending warnings are harmless; `git apply --ignore-whitespace` copes.
 
 ---
 
-## Pending / Next Steps
+## 9. Debugging runbook
 
-### Immediate (before next CWS submission)
-- [ ] Update Lemon Squeezy Annual product webhook metadata: add `isAnnual: true`
-- [ ] Update landing page pricing section to reflect new Annual/Lifetime feature split
-- [ ] Submit v1.0.19 to Chrome Web Store
-- [ ] CWS "What's new": bulk assignment, feature tier split, trial removed, World Cup event
-
-### World Cup (ongoing until Jul 19)
-- [ ] Update eliminated teams after each round — QFs play Jul 9-12, SFs Jul 14-15, Final Jul 19
-- [ ] After Final: confirm worldcupTheme.js auto-reverts (it does, `getTodayTeam()` returns null after Jul 19)
-
-### Product (next sprint)
-- [ ] LibertePay integration — wait for Ghana incorporation first
-- [ ] Lemon Squeezy webhook: handle `isAnnual` flag for Annual tier detection
-- [ ] CWS store description update with new tier structure
-- [ ] Reddit new account (current one banned) — 30+ day warmup needed before posting to subreddits
-- [ ] LinkedIn DM outreach: 20/day to new connections (started Jul 8, targeting Ghanaian professionals + founders first)
-- [ ] WhatsApp group outreach (tech communities, Ghanaian professional groups)
-- [ ] Quora: answer "can I have different WhatsApp profile photos for different contacts" — passive SEO traffic
-
-### Strategic
-- [ ] Incorporate DualProfile in Ghana (required for LibertePay + local monetisation)
-- [ ] UK Global Talent Visa (Digital Technology) application in progress
-- [ ] First paying user target: within 30 days
+1. **Popup, schedule section: Copy diagnostic log.** It prints the browser, version, timezone, saved schedule and state, the alarm (and when it next fires), WhatsApp tab status (including `discarded`), whether the live push is active, Convex calls per function, the last WhatsApp page check, then timestamped events with the gap since the previous one. Read the gaps first.
+2. Events: `boundary_detected`, `ask`, `toast_click`, `decision`, `apply_start`, `tab_found`, `msg_to_page`, step lines `1` to `5` (with the strategy used), `apply_result`. A failed step is named in the error and in a notification.
+3. **Measure a row or element:** in the page console, print `getBoundingClientRect()` and `getComputedStyle()` for the element and each parent, plus inline `style`. This is how both overlay bugs were found. Do not paste long base64 `src` values.
+4. **Catch a hover-only state:** wrap the measurement in `setTimeout(..., 8000)` and hover during the wait.
+5. If behaviour differs between browsers, first check both are running the same build and that the WhatsApp tab was hard-refreshed after the extension reload.
 
 ---
 
-## Key Architecture Notes
+## 10. Known gaps and unverified items
 
-**P2P detection:** When user installs, they register their phone number (hashed) in Convex. If person A has person B's number in WhatsApp and vice versa, and both have the extension installed, each side independently detects the other. No centralised matching — purely phone number lookup.
-
-**Photo delivery:** Photos stored in Cloudinary. `getPhotoForViewer` and `getPhotosForViewerBatch` in `convex/assignments.ts` filter `isActive: true` — critical, do not remove this filter or stale photos return.
-
-**Manifest V3:** Content script reads and manipulates WhatsApp Web DOM. No official API. Resilient selector targeting + MutationObserver for layout change survival. Overlay rendering fails silently to avoid breaking the host interface.
-
-**Storage keys:**
-- Core: `myPhone`, `myPhoneHash`, `p2pContactNames`, `trialState`, `dp_onboarding_complete`, `dp_onboarding_step`, `pendingAssignments`
-- World Cup: `dp_wc_*` (onboarding_seen, update_seen, unlocked, opening_seen, muted)
-- Never collide WC keys with core keys
-
-**Convex tables:** `users`, `assignments`, `photos` (isActive/isHistory), `schedules`, `userPrefs`
+- **Daylight saving.** The server window uses the UTC offset saved at the last Save, which goes stale after a clock change or travel (up to an hour wrong for what contacts see). The owner's own prompts use the browser's clock and are unaffected.
+- **Poll rate with the live push down is unmeasured.** The push was active in both browsers when measured; the 3s to 60s backoff has only been read in the code. If the live push shows `INACTIVE` in normal use, find out why.
+- **Overnight windows are tested** in the browsers (start side and after-midnight side) and by unit tests. What a contact sees from the server during an overnight window has not been seen on a second account.
+- **Avatar click viewer on Pass 1 rows** (geometry test) is new and has not been exercised on a live page. **Unverified.**
+- **Sidebar overlays on no-photo rows** are now drawn once (Pass 1 only). Also **unverified** on a live page.
+- **Crop-screen fallback** (dialog present, button label missing) is untested against a real label change.
+- Stale comments in `popup/popup.js` still say "Annual+" for the schedule flag; the flag is true for Free.
 
 ---
 
-## Files Changed This Session
+## 11. Decisions already made (do not reopen without new evidence)
 
-### Extension (`JayPlange/DualProfile`)
-| File | Change |
-|---|---|
-| `popup/worldcupTheme.js` | New file — full WC event system |
-| `popup/popup.html` | Bulk bar + WC script tag |
-| `popup/popup.js` | Bulk assign logic, tier hints, trial removal, feature flags |
-| `popup/popup.css` | Bulk UI styles, time input modernisation, tier badges |
-| `popup/onboarding.js` | Bulk i18n keys (9 langs), Annual unlock copy |
-| `lib/tier-system.js` | Annual tier, per-feature flags, trial removed |
-| `manifest.json` | v1.0.19 |
-
-### Landing Page (`JayPlange/dualprofile-landing`)
-| File | Change |
-|---|---|
-| `pages/index.tsx` | WC bar, cultural band, trial removal (9 langs), bulk/Annual copy, privacy fix, hero headline update, share hook, Preview Mode callout |
+- Free is generous on purpose: assignment needs both sides to install, and scheduling needs no one else. Charging for those removed the network the product depends on.
+- Scheduled photos change the real WhatsApp photo and are for everybody. The server fallback shows the scheduled photo to extension users with no assignment from you.
+- The final approve tap stays manual (section 5).
+- `devMode` tier overrides were removed (they unlocked the top tier from DevTools).
+- `popup/worldcupTheme.js` is the World Cup 2026 event theme (it ran until 19 July). Whether it still does anything is **unverified**; check before deleting.
 
 ---
 
-## Edwin's Working Style (important for continuity)
+## 12. Release checklist
 
-- Always read between the lines. Check frames, power dynamics, subtext before responding to any business communication
-- Never position him as small or hedging — he shows up as a founder evaluating options
-- UK English, no em dashes
-- SaaS product not "Chrome extension" in external comms
-- $0 bank balance as of Jul 2026 — revenue urgency is real
-- LibertePay partnership deferred until Ghana incorporation
-- LinkedIn DM outreach: 20/day, personalised by recipient's world, no cold pitches
-- Lemon Squeezy handles payments — don't change checkout links without explicit instruction
+1. `npx jest` passes.
+2. `node --check` on `background/service-worker.js`, `content/content.js`, `popup/popup.js`.
+3. If `convex/` changed: `npx convex dev --once`, then `npx convex deploy` (production).
+4. Chrome (personal) and Edge (Business): reload, hard-refresh, run one schedule start and end, check the sidebar avatars.
+5. Bump `manifest.json` and `package.json` together, add a `CHANGELOG.md` entry, submit to the stores.
+
+## Working agreements for whoever continues
+- Measure the real WhatsApp page before changing selectors or layout code. Several confident guesses in this codebase were wrong until measured.
+- Challenge a theory before building on it. State what is verified and what is inferred.
+- Say plainly when something has only been read in code, not run.

@@ -719,6 +719,11 @@
     photoCache: new Map(), // key: ownerPhone, value: { url, timestamp }
     notifCache: new Map(),  // key: ownerPhone, value: 96x96 thumbnail for notification icon
     cacheTTL: 30 * 1000, // 30 seconds — idle re-fetch interval
+    // How old a known contact's cached photo must be before the idle poll re-queries it.
+    // Changes arrive by timestamp change (sweepAllContacts) and by the live push, so this is only a
+    // safety net. It was cacheTTL (30s), which cost one Convex query per known contact every 30s
+    // per open tab. Not used for the in-chat lookup, which still honours cacheTTL.
+    idleRefetchTTL: 10 * 60 * 1000,
     lastChatPhone: null,
     pendingQueries: new Set(),
     knownPhones: new Set(),
@@ -956,8 +961,15 @@
       const raw = data.namePhoneCache || {};
       // Normalize all keys to lowercase so lookups are consistent
       namePhoneCache = {};
+      // This load bypasses cacheNamePhone()'s guard (it's a bulk restore, not
+      // a single write), so a system-account entry persisted to storage
+      // before the 2026-09-23 fix could otherwise resurrect itself on every
+      // reload. Filter it out here too.
+      const DP_SYSTEM_ACCOUNT_NAMES_LOAD = ['whatsapp business', 'whatsapp'];
       for (const [key, value] of Object.entries(raw)) {
-        namePhoneCache[key.trim().toLowerCase()] = normalizePhone(value) || value;
+        const normKey = key.trim().toLowerCase();
+        if (DP_SYSTEM_ACCOUNT_NAMES_LOAD.indexOf(normKey) !== -1) continue;
+        namePhoneCache[normKey] = normalizePhone(value) || value;
         tryRenderHeader();
       }
       Logger.info('[CACHE] Loaded namePhoneCache:', Object.keys(namePhoneCache).length, 'entries (keys normalized to lowercase)');
@@ -1001,6 +1013,18 @@
     const key = rawName.trim().toLowerCase();
     if (!key) return false;
     const phone = normalizePhone(rawPhone) || rawPhone;
+
+    // Never let WhatsApp's own official system/broadcast accounts enter
+    // namePhoneCache under any phone. Root cause found 2026-09-23 (Webb):
+    // "WhatsApp Business" has no @c.us data-id of its own, so it was
+    // resolved via name-based fallback and inherited a real contact's
+    // photo — a leak that reached both the sidebar AND, via this same
+    // cache feeding syncNotificationPhotoMap()'s phoneToName reverse
+    // lookup, the browser notification icon for that system account too.
+    // Blocking it here, at the single guarded write entry point, fixes
+    // every consumer at once instead of each render path separately.
+    const DP_SYSTEM_ACCOUNT_NAMES = ['whatsapp business', 'whatsapp'];
+    if (DP_SYSTEM_ACCOUNT_NAMES.indexOf(key) !== -1) return false;
 
     if (ambiguousNames.has(key)) return false; // already known unsafe, stay dropped
 
@@ -1836,12 +1860,35 @@ async function init() {
     // cache and Convex has never responded with a real timestamp, we never clear.
     var _convexConfirmedTime = null;
 
+    // ── Network poll schedule ────────────────────────────────────────────────
+    // GET_LAST_ASSIGNMENT_TIME is a Convex query. It used to run every ~4.8s per tab with the live
+    // push healthy, and every 800ms without it. The live push (WebSocket) already delivers changes
+    // instantly and the service worker re-checks on every reconnect, so this poll is only a safety
+    // net. Now: ~2 minutes with the push healthy; when it is down, back off 3s, 6s, 12s, 30s, 60s
+    // (reset by any detected change); never while the tab is hidden, with one catch-up poll when it
+    // becomes visible again; every interval jittered so tabs do not synchronise.
+    var POLL_LIVE_MS = 2 * 60 * 1000;
+    var POLL_BACKOFF_MS = [3000, 6000, 12000, 30000, 60000];
+    var _pollBackoffStep = 0;
+    var _nextNetworkPollAt = 0;
+    function _jitter(ms) { return Math.round(ms * (0.8 + Math.random() * 0.4)); }
+    function _scheduleNextNetworkPoll() {
+      var base = _liveSubActive ? POLL_LIVE_MS : POLL_BACKOFF_MS[Math.min(_pollBackoffStep, POLL_BACKOFF_MS.length - 1)];
+      if (!_liveSubActive) _pollBackoffStep++;
+      _nextNetworkPollAt = Date.now() + _jitter(base);
+    }
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) { _nextNetworkPollAt = 0; _pollBackoffStep = 0; } // catch up now
+    });
+
     setInterval(function() {
       if (!state.enabled || !p2pState.enabled) return;
-      // When live sub is active, only poll every ~10s as a safety net.
-      // When inactive (WS down), poll every 800ms as before.
+      // The local tick keeps its old cadence (checkP2PPhoto is DOM-only); only the Convex call is gated.
       _pollTick++;
       if (_liveSubActive && (_pollTick % 6 !== 0)) return; // ~5s when WS active
+      if (document.hidden) return;                          // nothing visible to update
+      if (Date.now() < _nextNetworkPollAt) { checkP2PPhoto(); return; }
+      _scheduleNextNetworkPoll();
 
       chrome.runtime.sendMessage({ type: 'GET_LAST_ASSIGNMENT_TIME' }, function(resp) {
         if (chrome.runtime.lastError) return;
@@ -1883,6 +1930,7 @@ async function init() {
         if (changed) {
           _lastAssignmentTime = serverTime;
           _lastWasSet = serverTime !== null;
+          _pollBackoffStep = 0; // something moved, so look again soon if the push is down
         }
 
         if (unassigned) {
@@ -1929,7 +1977,7 @@ async function init() {
             // Skip own phone — self-queries always return null and waste quota
             if (p2pState.ownRawPhone && phone === p2pState.ownRawPhone) return;
             var cached = p2pState.photoCache.get(phone);
-            var stale = !cached || (Date.now() - cached.timestamp) >= p2pState.cacheTTL;
+            var stale = !cached || (Date.now() - cached.timestamp) >= p2pState.idleRefetchTTL;
             if (stale && !p2pState.pendingQueries.has(phone)) queryRemotePhoto(phone);
           });
         }
@@ -2319,6 +2367,10 @@ function handleMessage(message, sender, sendResponse) {
           extensionEnabled: state.enabled
         });
         return true;
+      case 'RUN_WA_HEALTH_CHECK':
+        // Asked by the diagnostic report so it shows the page as it is now, not as it was at load.
+        sendResponse({ success: true, results: _recordWaHealth() });
+        return false;
       case 'APPLY_SCHEDULED_PHOTO_CHANGE':
         applyRealProfilePhotoChange(message.photoDataUrl)
           .then(result => sendResponse(result))
@@ -2617,6 +2669,12 @@ function autoPreviewOnLoad() {
 // any way to touch it -- the tradeoff is it only reaches WhatsApp Web
 // tabs specifically, this extension has no permission to draw into any
 // other site.
+
+// Sends a timestamped event to the service worker's schedule diagnostic log.
+function dpLog(event, detail) {
+  try { chrome.runtime.sendMessage({ type: 'SCHEDULE_LOG', event, detail: detail === undefined ? '' : String(detail) }); } catch (_) {}
+}
+
 function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
   const existing = document.getElementById('dp-schedule-toast');
   if (existing) existing.remove();
@@ -2680,15 +2738,18 @@ function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
   toast.querySelector('.dp-toast-switch').textContent = switchNowLabel;
 
   toast.querySelector('.dp-toast-switch').addEventListener('click', () => {
+    dpLog('toast_click', 'switch');
     chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'switch' });
     toast.remove();
   });
   toast.querySelector('.dp-toast-dismiss').addEventListener('click', () => {
+    dpLog('toast_click', 'not_now');
     chrome.runtime.sendMessage({ type: 'SCHEDULE_TOAST_DECISION', decision: 'not_now' });
     toast.remove();
   });
 
   document.body.appendChild(toast);
+  dpLog('toast_shown', 'in-page toast displayed');
 }
 
 // ── applyRealProfilePhotoChange ───────────────────────────────────────────────
@@ -2726,6 +2787,9 @@ function showScheduleToast(title, body, switchNowLabel, notNowLabel) {
 // the whole way through, before it's ever left to fire unattended off
 // the notification flow.
 async function applyRealProfilePhotoChange(photoDataUrl) {
+  const _t0 = Date.now();
+  const _step = (name) => dpLog('step', name + ' +' + (Date.now() - _t0) + 'ms');
+  _step('start (panel already open: ' + !!document.querySelector('[data-testid="profile-pic-picker"]') + ')');
   try {
     // Navigate to the profile screen first -- everything below assumes
     // it's open, and nothing gets there on its own. Check whether it's
@@ -2746,41 +2810,54 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
       // exactly the class of change the surrounding comments already
       // warned about -- confirmed via live querySelectorAll against the
       // real page before touching this line, not guessed.
-      const navPhoto = document.querySelector('[data-testid="navbar-item-profile-photo"]');
-      const navButton = navPhoto?.closest('button');
-      if (!navButton) throw new Error('Profile nav button not found -- selectors need updating');
+      const navHit = waFind('navProfileButton');
+      if (!navHit) throw new Error('STEP 1: profile nav button not found by any strategy (' + WA_DEPENDENCIES.navProfileButton.map(function (x) { return x.name; }).join('; ') + ')');
+      const navButton = navHit.el;
+      _step('1 nav button found via ' + navHit.strategy + (navHit.index > 0 ? ' (FALLBACK, strategy ' + (navHit.index + 1) + ')' : '') + ', clicked');
       navButton.click();
 
-      // Clicking the sidebar avatar opens a "Me" overview panel first,
-      // not the editable photo screen directly -- confirmed by direct
-      // inspection, 2026-08-02. The large photo on that overview panel
-      // is the actual shortcut into the edit screen; WhatsApp labels it
-      // "View photo" even though clicking it is what reveals the
-      // edit/camera UI, going by what was actually observed rather than
-      // the label text. Same locale caveat as aria-label="You" earlier:
-      // this is the English label specifically, worth a locale-
-      // independent replacement if one turns up later.
-      const photoButton = await waitForElement('[role="button"][aria-label="View photo"]', 5000);
-      if (!photoButton) throw new Error('"Me" overview photo button not found -- selectors need updating');
-      photoButton.click();
+      // What the nav click opens depends on the account (inspected on live
+      // WhatsApp Web, 2026-09-29):
+      //   - Business account: the profile editor directly (picker present).
+      //   - Personal account: a settings list whose first row is
+      //     button[data-testid="li-profile"] ("Profile"); clicking it opens
+      //     the editor. Console test: click li-profile -> picker present.
+      //   - An account that already has a photo may show "View photo" first.
+      // Wait for whichever appears first, then take the matching step.
+      const first = await waWaitForAny(['profilePicker', 'profileRow', 'viewPhotoButton'], 6000);
+      if (!first) throw new Error('STEP 2: none of the picker, the Profile row or "View photo" appeared within 6s');
+      _step('2 first element appeared: ' + first.name + ' via ' + first.strategy);
+      if (first.name !== 'profilePicker') first.el.click();
 
       picker = await waitForElement('[data-testid="profile-pic-picker"]', 5000);
-      if (!picker) throw new Error('Profile screen did not open, or picker not found -- selectors need updating');
+      if (!picker) throw new Error('STEP 3: profile picker not found after opening the profile panel');
     }
 
     // Confirmed via direct diagnostic (2026-08-02), not assumed: this
     // input is NOT a descendant of the picker container, despite how it
     // looked in an earlier screenshot. It renders elsewhere in the page
-    // entirely, so it's found by what it is, not where it sits. This
-    // exact accept list is specific enough to trust on its own; the
-    // page's other file input at the time of testing was a generic
-    // any-file, multi-select one (chat attachments), clearly distinct.
-    const fileInput = await waitForElement(
-      'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]',
-      5000
-    );
-    if (!fileInput) throw new Error('Profile picture file input not found -- selectors need updating');
+    // entirely. Its accept list is specific enough to find it by what it
+    // is, but NOT enough to pick it by that alone: measured on a live
+    // WhatsApp Business profile editor (2026-10-02), the page holds TWO
+    // inputs with this identical accept list, one for the cover photo
+    // (document order 0, five levels above the avatar's picker) and one
+    // for the avatar (document order 1, one level above it). Taking the
+    // first match therefore uploaded to the cover photo. The avatar's
+    // input is the one nearest to the picker, so walk up from the picker
+    // and take the first match found. A personal account has one such
+    // input, and this still finds it, at whatever level it sits.
+    _step('3 picker present');
+    const inputFound = await waWaitForAny(['photoInput'], 5000);
+    if (!inputFound) throw new Error('STEP 4: profile picture file input not found by any strategy');
+    // The walk up from the picker must use the selector the matching strategy used.
+    const PHOTO_INPUT_SELECTOR = inputFound.index === 0 ? PHOTO_INPUT_SELECTOR_EXACT : 'input[type="file"][accept*="image/jpeg"]';
+    const photoInputHit = findProfilePhotoInput(picker, PHOTO_INPUT_SELECTOR);
+    if (!photoInputHit) throw new Error('STEP 4: profile picture file input not found near the picker');
+    const fileInput = photoInputHit.input;
 
+    _step('4 file input found via ' + inputFound.strategy + (inputFound.index > 0 ? ' (FALLBACK)' : '') + ' (level ' + photoInputHit.level + ' above picker, ' +
+      photoInputHit.candidates + ' candidate(s) there, ' +
+      document.querySelectorAll(PHOTO_INPUT_SELECTOR).length + ' on the page)');
     const file = await dataUrlToFile(photoDataUrl, 'dualprofile-scheduled.jpg');
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
@@ -2799,13 +2876,22 @@ async function applyRealProfilePhotoChange(photoDataUrl) {
     // what it does. This function's job ends at getting the right photo
     // ready on screen. The last tap is the person's, on purpose, not an
     // unsolved gap.
-    const confirmButton = await waitForElement('button[aria-label="Submit image"]', 8000);
-    if (!confirmButton) {
-      throw new Error('Crop screen did not appear within 8s -- selectors need updating, or the file was rejected');
+    const confirmHit = await waWaitForAny(['cropConfirmButton'], 8000);
+    if (!confirmHit) {
+      // The approve button is found by an English label, which can change or be translated. If a
+      // dialog is open, the file was accepted and the crop screen is almost certainly up. Say so in
+      // the log, marked unverified, instead of failing a flow that did what it was asked to do.
+      const openDialog = document.querySelector('[role="dialog"], [aria-modal="true"]');
+      if (!openDialog) {
+        throw new Error('STEP 5: crop screen did not appear within 8s (selector changed, or file rejected)');
+      }
+      _step('5 UNVERIFIED: approve button not found by its label, but a dialog is open, so assuming the crop screen is up');
+    } else {
+      _step('5 crop screen ready via ' + confirmHit.strategy + ', waiting for the person to approve');
     }
-
     return { success: true, readyForConfirmation: true };
   } catch (e) {
+    _step('FAILED ' + e.message);
     Logger.error('[SCHEDULE] Real profile photo change failed:', e);
     return { success: false, error: e.message };
   }
@@ -2821,6 +2907,163 @@ window.__dpTestApplyScheduledPhoto = applyRealProfilePhotoChange;
 // Small, generic helpers used by applyRealProfilePhotoChange above.
 // Not tied to the schedule feature specifically, kept next to it since
 // it's the only current caller.
+
+// Returns the file input nearest to `picker`, by walking up from it and
+// stopping at the first ancestor that contains a match. Null if none.
+function findProfilePhotoInput(picker, selector) {
+  let node = picker;
+  let level = 0;
+  while (node) {
+    const found = node.querySelectorAll(selector);
+    if (found.length) return { input: found[0], level, candidates: found.length };
+    node = node.parentElement;
+    level++;
+  }
+  return null;
+}
+
+// ── WhatsApp page dependencies ─────────────────────────────────────────────
+// WhatsApp Web is not ours, and it has renamed things we depend on before. Every element the
+// profile-photo flow needs is listed here with ordered strategies. Strategy 1 is the one verified
+// on live WhatsApp Web (dates in the notes); later ones are fallbacks. waFind() reports which
+// strategy matched, and that is written to the diagnostic log, so a rename shows up as "matched by
+// fallback" before it shows up as a failure. Prefer testids and structure over visible text: the
+// aria-labels below are English and break on other languages.
+var WA_DEPENDENCIES = {
+  // Business accounts have the testid (confirmed 2026-09-22). Personal accounts do not: the nav
+  // footer holds exactly Media then the profile button (confirmed 2026-09-29).
+  navProfileButton: [
+    { name: 'testid navbar-item-profile-photo', find: function () {
+      var el = document.querySelector('[data-testid="navbar-item-profile-photo"]');
+      return el ? el.closest('button') : null; } },
+    { name: 'last button in navbar-footer-section', find: function () {
+      var footer = document.querySelector('[data-testid="navbar-footer-section"]');
+      var buttons = footer ? footer.querySelectorAll('button') : [];
+      return buttons.length ? buttons[buttons.length - 1] : null; } },
+    { name: 'footer button labelled "You" (English only)', find: function () {
+      return document.querySelector('[data-testid="navbar-footer-section"] button[aria-label="You"]'); } }
+  ],
+  // Personal accounts: settings list, first row (confirmed 2026-09-29).
+  profileRow: [
+    { name: 'testid li-profile', find: function () { return document.querySelector('[data-testid="li-profile"]'); } }
+  ],
+  // The avatar's 120x120 picker on the profile editor (confirmed 2026-10-02 on Business).
+  profilePicker: [
+    { name: 'testid profile-pic-picker', find: function () { return document.querySelector('[data-testid="profile-pic-picker"]'); } }
+  ],
+  // Shown first when the account already has a photo.
+  viewPhotoButton: [
+    { name: 'role=button aria-label "View photo" (English only)', find: function () {
+      return document.querySelector('[role="button"][aria-label="View photo"]'); } }
+  ],
+  // The Business editor holds two inputs with this same accept list (cover and avatar); the one
+  // nearest the picker is taken by findProfilePhotoInput.
+  photoInput: [
+    { name: 'input[type=file] with the exact image accept list', find: function () {
+      return document.querySelector(PHOTO_INPUT_SELECTOR_EXACT); } },
+    { name: 'single-file image input (accept contains image/jpeg, not multiple)', find: function () {
+      var list = document.querySelectorAll('input[type="file"][accept*="image/jpeg"]');
+      for (var i = 0; i < list.length; i++) { if (!list[i].multiple) return list[i]; }
+      return null; } }
+  ],
+  // The crop screen's approve button. The extension never taps it: the person does.
+  cropConfirmButton: [
+    { name: 'button aria-label "Submit image" (English only)', find: function () {
+      return document.querySelector('button[aria-label="Submit image"]'); } }
+  ]
+};
+var PHOTO_INPUT_SELECTOR_EXACT = 'input[type="file"][accept="image/gif,image/jpeg,image/jpg,image/png"]';
+
+// First strategy that finds the element: { el, strategy, index } or null.
+function waFind(name) {
+  var list = WA_DEPENDENCIES[name] || [];
+  for (var i = 0; i < list.length; i++) {
+    var el = null;
+    try { el = list[i].find(); } catch (e) { el = null; }
+    if (el) return { el: el, strategy: list[i].name, index: i };
+  }
+  return null;
+}
+
+// Resolves with the first of the named dependencies to appear: { name, el, strategy, index }, or
+// null on timeout.
+function waWaitForAny(names, timeoutMs) {
+  function look() {
+    for (var i = 0; i < names.length; i++) {
+      var hit = waFind(names[i]);
+      if (hit) { hit.name = names[i]; return hit; }
+    }
+    return null;
+  }
+  return new Promise(function (resolve) {
+    var existing = look();
+    if (existing) { resolve(existing); return; }
+    var done = false;
+    var finish = function (hit) { if (done) return; done = true; observer.disconnect(); clearTimeout(timer); resolve(hit); };
+    var observer = new MutationObserver(function () { var hit = look(); if (hit) finish(hit); });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    var timer = setTimeout(function () { finish(null); }, timeoutMs);
+  });
+}
+
+// Self-check of what can be tested on any screen, so a WhatsApp change is noticed before anyone
+// tries a schedule. Panels that are not open cannot be checked, so those are not listed.
+// It does NOT judge until the app has rendered: the first version ran 6s after load, caught
+// Chrome still loading (0 chat rows, no navigation yet) and reported FAIL for things that were
+// simply not there yet. Not rendered means "not ready", reported as such, and re-checked.
+function runWaHealthCheck() {
+  var rows = document.querySelectorAll('[role="row"]');
+  var nav = waFind('navProfileButton');
+  if (rows.length === 0 && !nav) {
+    return [{ name: 'WhatsApp page', ok: null, via: 'not ready: still loading, or logged out. Nothing judged' }];
+  }
+  var checks = [];
+  checks.push({ name: 'profile button in the navigation', ok: !!nav, via: nav ? nav.strategy : '' });
+  checks.push({ name: 'chat list rows ([role=row])', ok: rows.length > 0, via: rows.length + ' rows' });
+  var rowTitles = 0;
+  rows.forEach(function (r) { if (r.querySelector('span[title]')) rowTitles++; });
+  checks.push({ name: 'chat names (span[title]) inside rows', ok: rows.length === 0 || rowTitles > 0, via: rowTitles + ' of ' + rows.length });
+  var rowAvatars = 0;
+  rows.forEach(function (r) { if (r.querySelector('img, svg[width="48"]')) rowAvatars++; });
+  checks.push({ name: 'avatars inside rows', ok: rows.length === 0 || rowAvatars > 0, via: rowAvatars + ' of ' + rows.length });
+  return checks;
+}
+var _waHealthRetries = 0;
+function _recordWaHealth() {
+  if (document.hidden) return null;
+  try {
+    var results = runWaHealthCheck();
+    chrome.storage.local.set({ dp_wa_health: { at: Date.now(), results: results } });
+    // Still loading: look again soon, up to about 3 minutes, then fall back to the 10-minute cycle.
+    if (results[0] && results[0].ok === null && _waHealthRetries < 9) {
+      _waHealthRetries++;
+      setTimeout(_recordWaHealth, 20000);
+    }
+    return results;
+  } catch (e) { return null; /* diagnostics must never break the page */ }
+}
+setTimeout(_recordWaHealth, 6000);
+setInterval(_recordWaHealth, 10 * 60 * 1000);
+
+// Kept for older call sites.
+function findProfileNavButton() {
+  var hit = waFind('navProfileButton');
+  return hit ? hit.el : null;
+}
+
+// Resolves with the first element matching any selector, or null on timeout.
+function waitForAnyElement(selectors, timeoutMs = 5000) {
+  const query = () => { for (const s of selectors) { const el = document.querySelector(s); if (el) return el; } return null; };
+  return new Promise((resolve) => {
+    const existing = query();
+    if (existing) { resolve(existing); return; }
+    let done = false;
+    const finish = (el) => { if (done) return; done = true; observer.disconnect(); clearTimeout(timer); resolve(el); };
+    const observer = new MutationObserver(() => { const el = query(); if (el) finish(el); });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    const timer = setTimeout(() => finish(null), timeoutMs);
+  });
+}
 
 function waitForElement(selector, timeoutMs = 5000) {
   return new Promise((resolve) => {
@@ -6374,12 +6617,17 @@ function processNewSidebarRow(rowElement) {
   var phone = extractPhoneFromRow(row);
   if (!phone) return;
 
-  // Never overlay onto the account's own number. WhatsApp Business renders a
-  // system "WhatsApp Business" row whose data-id resolves to the account's
-  // own phone (same number as any self-chat/contact row), so without this
-  // guard the photo cached against your own number leaks onto that row too.
-  // Confirmed live 2026-09-23 (Webb): "WhatsApp Business" row extracted the
-  // same phone as "Edwin Plange" and inherited its cached photo.
+  // Never overlay onto the account's own number — if it ever appears as a
+  // row (e.g. a self-chat), any photo cached against your own number must
+  // not leak onto it. NOTE (correcting the record, 2026-09-23): this guard
+  // was originally added on the theory that it explained the "WhatsApp
+  // Business" photo leak. Live evidence disproved that — ownRawPhone was
+  // confirmed to be a different number (233509764406, the @DualProfile row)
+  // than the one actually leaking (233547716672, Edwin Plange's). The real
+  // fix for that bug is the SYSTEM_ACCOUNT_NAMES exclusion above. This guard
+  // is kept as a separate, still-valid defence against a genuinely different
+  // scenario (your own number appearing in the sidebar), not as the fix for
+  // the bug that was actually observed.
   if (p2pState.ownRawPhone && phone === p2pState.ownRawPhone) {
     // Clean up any overlay already injected before this guard existed —
     // otherwise a row that resolves to your own number keeps a stale
@@ -6398,6 +6646,39 @@ function processNewSidebarRow(rowElement) {
   // avatarImg.dataset.dpApplied stores the name that was applied.
   // If the row has been recycled by React with a different contact,
   // the name won't match and we re-apply — never show wrong photo.
+  // Pass 1 (applyOverlayToRow) owns any row where it has put the photo on an <img> it tagged with
+  // data-dp-phone, whether it swapped WhatsApp's own avatar image or injected one over the default
+  // avatar. Stacking Pass 2's overlay on top draws the same photo twice, and Pass 2's positioning
+  // (the avatar wrapper becomes position:absolute) collapsed the avatar column on rows with a real
+  // photo. Measured live in Chrome and Edge, 2026-10-02: both passes acted on one row, the avatar's
+  // container went to 0x0 or the overlay stretched into a tall oval. Clicking such an avatar still
+  // opens the DualProfile viewer, through the geometry check in installDualProfileClickHandler.
+  // The comment above applySidebarOverlays used to say Pass 2 skips these rows, but its check
+  // compared dpApplied with the contact NAME while Pass 1 stores the photo URL there, so it never did.
+  // Pass 2 now only handles rows Pass 1 could not resolve a phone for.
+  var passOneImg = row.querySelector('img[data-dp-phone]');
+  if (passOneImg) {
+    var staleOverlay = row.querySelector('[data-dualprofile-sidebar-overlay="true"]');
+    if (staleOverlay) {
+      var staleWrapper = staleOverlay.parentElement;
+      staleOverlay.remove();
+      // Undo the wrapper positioning only when the avatar is WhatsApp's own image. For an image
+      // Pass 1 injected, the wrapper styling belongs to Pass 1 and must stay.
+      if (staleWrapper && !passOneImg.dataset.dpInjected) {
+        ['position', 'top', 'left', 'right', 'bottom', 'width', 'height'].forEach(function (prop) {
+          staleWrapper.style.removeProperty(prop);
+        });
+        var staleContainer = staleWrapper.parentElement;
+        if (staleContainer) {
+          ['min-width', 'min-height', 'flex-shrink'].forEach(function (prop) {
+            staleContainer.style.removeProperty(prop);
+          });
+        }
+      }
+    }
+    return;
+  }
+
   var avatarImg = findAvatarImgInRow(row);
   if (!avatarImg || !avatarImg.parentElement) return;
 
@@ -6441,6 +6722,14 @@ var wrapper = avatarImg.parentElement;
   if (wrapperContainer && getComputedStyle(wrapperContainer).position === 'static') {
     wrapperContainer.style.position = 'relative';
   }
+
+  // NOTE: an earlier version pinned this container's min-width/min-height to
+  // its measured size before the wrapper went absolute. Removed 2026-10-02:
+  // WhatsApp sizes this container with an aspect-ratio box (padding-top:
+  // 100%), so min-height (a content-box value) ADDED to that padding and the
+  // container doubled from 48px to 96px, stretching the overlay into a tall
+  // oval over the next row. Measured live in Chrome and Edge: same container,
+  // 48x48 without the pin, 48x96 with it.
 
   wrapper.style.position = 'absolute';
   wrapper.style.top = '0';
@@ -6530,32 +6819,83 @@ function ensureSidebarObserver() {
   if (!sidebarPane) return;
 
   // ── MutationObserver: catches React virtualized row swaps ─────────────────
+  // Watches childList (rows added/removed) AND the title attribute (rows
+  // recycled IN PLACE — React updates an existing row's span[title] rather
+  // than replacing the DOM node, which childList alone never sees). Without
+  // this, a recycled row keeps showing the PREVIOUS contact's photo until
+  // the next 1s poll — a visible flash. Fixed 2026-09-23 (Webb).
+  //
+  // Deliberately NOT observing characterData: WhatsApp sidebar rows contain
+  // constantly-changing text (message previews, unread counts) that would
+  // fire far more often than actual identity changes, on every row, during
+  // normal use. span[title] is documented elsewhere in this file as "most
+  // reliable when present" and every live diagnostic this session confirms
+  // it's present on the WhatsApp build in use, so the textContent-based
+  // fallback strategies (B/C) are an edge case not confirmed to occur here;
+  // the 1s poll remains the backstop for that edge case, same as before
+  // this fix, rather than paying an unproven ongoing cost for it.
+  var _rowsToReprocess = new Set();
+  var _reprocessScheduled = false;
+  function scheduleRowReprocess(row) {
+    if (!row) return;
+    _rowsToReprocess.add(row);
+    if (_reprocessScheduled) return;
+    _reprocessScheduled = true;
+    // Microtask, not a timer — runs before the next paint, no added delay.
+    Promise.resolve().then(function () {
+      _reprocessScheduled = false;
+      var rows = _rowsToReprocess;
+      _rowsToReprocess = new Set();
+      rows.forEach(function (r) {
+        if (!r.isConnected) return;
+        applyOverlayToRow(r);
+        if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(r);
+      });
+    });
+  }
+
   _sidebarObserver = new MutationObserver(function (mutations) {
     if (!state.enabled) return;
 
     for (var m = 0; m < mutations.length; m++) {
-      if (mutations[m].type !== 'childList') continue;
-      var added = mutations[m].addedNodes;
-      for (var n = 0; n < added.length; n++) {
-        if (added[n].nodeType !== 1) continue;
-        // If the added node IS a row, process it directly
-        if (added[n].getAttribute && added[n].getAttribute('role') === 'row') {
-          applyOverlayToRow(added[n]);
-          if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(added[n]);
-        } else {
-          // React may swap larger chunks containing multiple rows
-          var innerRows = added[n].querySelectorAll ? added[n].querySelectorAll('[role="row"]') : [];
-          for (var r = 0; r < innerRows.length; r++) {
-            applyOverlayToRow(innerRows[r]);
-            if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(innerRows[r]);
+      var mut = mutations[m];
+
+      if (mut.type === 'childList') {
+        var added = mut.addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          if (added[n].nodeType !== 1) continue;
+          // If the added node IS a row, process it directly
+          if (added[n].getAttribute && added[n].getAttribute('role') === 'row') {
+            applyOverlayToRow(added[n]);
+            if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(added[n]);
+          } else {
+            // React may swap larger chunks containing multiple rows
+            var innerRows = added[n].querySelectorAll ? added[n].querySelectorAll('[role="row"]') : [];
+            for (var r = 0; r < innerRows.length; r++) {
+              applyOverlayToRow(innerRows[r]);
+              if (p2pState.enabled && p2pState.photoCache.size > 0) processNewSidebarRow(innerRows[r]);
+            }
           }
         }
+      } else if (mut.type === 'attributes') {
+        // A recycled row's span[title] changed without the row node itself
+        // being replaced. mut.target is always an Element for attribute
+        // mutations (never a text node), so no nodeType branch is needed.
+        // Find the owning row and re-evaluate it immediately, before the
+        // next poll.
+        var ownerRow = mut.target.closest ? mut.target.closest('[role="row"]') : null;
+        if (ownerRow) scheduleRowReprocess(ownerRow);
       }
     }
   });
 
-  _sidebarObserver.observe(sidebarPane, { childList: true, subtree: true });
-  Logger.info('[SIDEBAR] MutationObserver attached to div[aria-label="Chat list"][role="grid"]');
+  _sidebarObserver.observe(sidebarPane, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['title']
+  });
+  Logger.info('[SIDEBAR] MutationObserver attached to div[aria-label="Chat list"][role="grid"] (childList + title attribute)');
 
   // ── Scroll listener: re-applies overlays on lazy-loaded rows ─────────────
   // Debounced at 200ms so rapid scrolling doesn't hammer the DOM.
@@ -6813,6 +7153,27 @@ function installDualProfileClickHandler() {
         openDualProfileViewer(cached.url, nameEl ? nameEl.getAttribute('title') : '');
       }
       return;
+    }
+
+    // ── Sidebar avatar owned by Pass 1 (picture swapped in place, no overlay div) ──
+    // Open the viewer when the click lands on the avatar itself, as the overlay did.
+    var ownedRow = e.target.closest ? e.target.closest('[role="row"]') : null;
+    if (ownedRow && !ownedRow.closest('[role="dialog"]')) {
+      var ownedImg = ownedRow.querySelector('img[data-dp-phone]');
+      if (ownedImg) {
+        var oRect = ownedImg.getBoundingClientRect();
+        var oHit = oRect.width > 0 && e.clientX >= oRect.left && e.clientX <= oRect.right &&
+                   e.clientY >= oRect.top && e.clientY <= oRect.bottom;
+        var oPhone = ownedImg.getAttribute('data-dp-phone');
+        var oCached = oPhone ? p2pState.photoCache.get(oPhone) : null;
+        if (oHit && oCached && oCached.url) {
+          e.stopPropagation();
+          e.preventDefault();
+          var oName = ownedRow.querySelector('span[title]');
+          openDualProfileViewer(oCached.url, oName ? oName.getAttribute('title') : '');
+          return;
+        }
+      }
     }
 
     // ── Header overlay click ─────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { authArgs, requireUser, requireUserAndTouch } from "./auth";
+import { isInScheduleWindow } from "./scheduleWindow";
 
 const MAX_BATCH_OWNERS = 100;
 
@@ -42,12 +43,9 @@ async function getScheduleFallbackPhotoNumber(
   const ownerLocal = new Date(Date.now() - offset * 60_000);
   const dayOfWeek = ownerLocal.getUTCDay();
   const currentMinutes = ownerLocal.getUTCHours() * 60 + ownerLocal.getUTCMinutes();
-  const startMinutes = schedule.startHour * 60 + schedule.startMinute;
-  const endMinutes = schedule.endHour * 60 + schedule.endMinute;
-  const inWindow =
-    schedule.days.includes(dayOfWeek) &&
-    currentMinutes >= startMinutes &&
-    currentMinutes < endMinutes;
+  // Overnight-aware (a 22:00 to 06:00 window runs past midnight). Shared rule,
+  // kept identical to the extension's copy; see convex/scheduleWindow.ts.
+  const inWindow = isInScheduleWindow(schedule, dayOfWeek, currentMinutes);
 
   // Only ever apply within the scheduled window itself. Outside it, there is
   // no fallback — return null so callers fall through to "no override"

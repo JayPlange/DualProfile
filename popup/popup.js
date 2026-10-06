@@ -3208,6 +3208,32 @@ async function initSchedule(isPro) {
   });
 }
 
+function bindScheduleDiagnostic() {
+  const copyBtn = document.getElementById('copyScheduleLogBtn');
+  const clearBtn = document.getElementById('clearScheduleLogBtn');
+  const flash = (btn, text) => { const orig = btn.textContent; btn.textContent = text; setTimeout(() => { btn.textContent = orig; }, 1800); };
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULE_LOG' });
+      if (!resp?.success) { flash(copyBtn, 'Failed'); return; }
+      try {
+        await navigator.clipboard.writeText(resp.text);
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = resp.text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      flash(copyBtn, 'Copied');
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ type: 'CLEAR_SCHEDULE_LOG' });
+      flash(clearBtn, 'Cleared');
+    });
+  }
+}
+
 function bindScheduleUI(isPro) {
   const enabledToggle = document.getElementById('scheduleEnabled');
   const fields = document.getElementById('scheduleFields');
@@ -3483,6 +3509,7 @@ async function initProFeatures(isPro) {
   await initPhotoHistory(isPro);
   await initSchedule(isSchedule);
   bindScheduleUI(isSchedule);
+  bindScheduleDiagnostic();
   bindExportImport(isExportImport);
   await syncPrefsIfPro(isMultiDevice);
 }

@@ -1,3 +1,14 @@
+## v1.0.36 - 2026-10-04
+- **Scheduled photos, Chrome:** "Switch now" now reaches the profile editor on personal accounts. They have no `navbar-item-profile-photo` testid; the nav footer's last button opens a settings list whose first row (`li-profile`) opens the editor.
+- **Scheduled photos, Business:** the photo now goes to the avatar, not the cover. The editor holds two file inputs with the same accept list; the one nearest the avatar picker is used.
+- **Timing:** the schedule check is aligned to the clock minute (prompts were up to 52s late) and is no longer reset by service worker restarts. Saving a schedule no longer prompts for the outside-window photo (that caused a second, early notification).
+- **Overnight windows** (end earlier than start) now work in the extension and on the server. The ticked day is the day the window starts.
+- **Sidebar:** fixed a collapsed avatar column on contacts with a real photo and a tall oval on contacts without; the two overlay paths no longer act on the same row. Avatar clicks still open the viewer.
+- **Network:** polling reduced from about every 4.8s (800ms with the live push down) per tab to about every 2 minutes, with backoff, a pause while the tab is hidden, a 10-minute idle re-query, and shared answers in the service worker.
+- **WhatsApp changes:** the profile-photo flow's page dependencies are in one registry with fallback strategies and a periodic self-check; the log shows which strategy matched.
+- **Diagnostics:** popup buttons Copy diagnostic log and Clear log; the log carries timestamped schedule events, alarm state, live push state, Convex call counts and the page check.
+- Tests: 61 (schedule window rule, server copy parity, dependency registry).
+
 ## v1.0.25 — 2026-07-16
 - **Root cause of the Chrome->Edge rendering bug found and fixed.** The
   sync layer was never broken (confirmed via the v1.0.24 diagnostics —
