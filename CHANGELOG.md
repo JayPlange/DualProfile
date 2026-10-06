@@ -1,4 +1,4 @@
-## v1.0.36 - 2026-10-04
+## v1.0.37 - 2026-10-04
 - **Scheduled photos, Chrome:** "Switch now" now reaches the profile editor on personal accounts. They have no `navbar-item-profile-photo` testid; the nav footer's last button opens a settings list whose first row (`li-profile`) opens the editor.
 - **Scheduled photos, Business:** the photo now goes to the avatar, not the cover. The editor holds two file inputs with the same accept list; the one nearest the avatar picker is used.
 - **Timing:** the schedule check is aligned to the clock minute (prompts were up to 52s late) and is no longer reset by service worker restarts. Saving a schedule no longer prompts for the outside-window photo (that caused a second, early notification).
