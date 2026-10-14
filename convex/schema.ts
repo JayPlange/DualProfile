@@ -29,6 +29,16 @@ export default defineSchema({
     trialStartedAt:         v.optional(v.number()),
     trialEndsAt:            v.optional(v.number()),
     trialActivationEventAt: v.optional(v.number()),
+    // C1b: SHA-256 of this account's recovery key. The key itself lives only
+    // in the account's own browsers (see lib/device-auth.js); the server keeps
+    // the hash, exactly as it does for device tokens. Once this is set, a new
+    // device can join the account only by presenting the key. Knowing the
+    // phone number is no longer enough. See mayLinkDevice in convex/auth.ts.
+    //
+    // OPTIONAL ON PURPOSE. Every existing row lacks it and must keep passing
+    // Convex's schema check on deploy (same reasoning as deviceToken above).
+    // No index, and no other table changes.
+    recoveryHash: v.optional(v.string()),
   })
     .index("by_extension_id", ["extensionId"])
     .index("by_install_id",   ["installId"])
@@ -109,11 +119,12 @@ export default defineSchema({
   }).index("by_user", ["userId"]),
 
   // ── pendingClaims ─────────────────────────────────────────────────────────
-  // Audit trail for the residual risk C1 does NOT close: someone who knows
-  // your phone number can still register a device against your account,
-  // because there is no phone verification yet. Every claim of a phoneHash
-  // that already has a live device is recorded here. Watch this table; when
-  // you add OTP (C1b), this becomes the enforcement point.
+  // Record of REFUSED claims. Since C1b, a device that asserts a phone number
+  // already held by a protected account is no longer attached to it (see
+  // mayLinkDevice in convex/auth.ts); the attempt is written here instead, one
+  // row per (account, install). A burst of rows against one account means
+  // someone is trying that person's number, or an honest owner has reinstalled
+  // without their recovery key and needs help getting back in.
   pendingClaims: defineTable({
     userId:      v.id("users"),
     phoneHash:   v.string(),
@@ -121,6 +132,25 @@ export default defineSchema({
     claimedAt:   v.number(),
     deviceCount: v.number(),
   }).index("by_user", ["userId"]),
+
+  // ── licenseClaims ────────────────────────────────────────────────────────
+  // C5: which accounts a Lemon Squeezy licence key has been verified for.
+  // Written only by convex/licenses.ts after the SERVER has asked Lemon
+  // Squeezy about the key, so the client can no longer just say "I'm Pro".
+  // keyHash is SHA-256 of the key; the key itself is never stored. One row per
+  // (key, account). The number of rows per key is capped at the key's
+  // activation limit, so one purchase cannot be shared across unlimited
+  // accounts.
+  //
+  // A NEW TABLE ON PURPOSE. No existing table or field changes, so the schema
+  // check on deploy cannot fail on existing data.
+  licenseClaims: defineTable({
+    keyHash:   v.string(),
+    userId:    v.id("users"),
+    checkedAt: v.number(),
+  })
+    .index("by_key",  ["keyHash"])
+    .index("by_user", ["userId"]),
 
   // ── cloudinaryDeleteFailures ─────────────────────────────────────────────
   // C4: when a `photos` row is deleted, the underlying Cloudinary asset is

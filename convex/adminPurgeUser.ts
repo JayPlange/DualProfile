@@ -29,13 +29,14 @@ export const purgeUserData = internalMutation({
       throw new Error("No user found with that userId — nothing to purge.");
     }
 
-    const [devices, assignments, photos, schedules, userPrefs, pendingClaims] = await Promise.all([
+    const [devices, assignments, photos, schedules, userPrefs, pendingClaims, licenseClaims] = await Promise.all([
       ctx.db.query("devices").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
       ctx.db.query("assignments").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
       ctx.db.query("photos").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
       ctx.db.query("schedules").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
       ctx.db.query("userPrefs").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
       ctx.db.query("pendingClaims").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
+      ctx.db.query("licenseClaims").withIndex("by_user", (q) => q.eq("userId", args.userId)).collect(),
     ]);
 
     if (!args.dryRun) {
@@ -52,6 +53,7 @@ export const purgeUserData = internalMutation({
       for (const s of schedules) await ctx.db.delete(s._id);
       for (const up of userPrefs) await ctx.db.delete(up._id);
       for (const pc of pendingClaims) await ctx.db.delete(pc._id);
+      for (const lc of licenseClaims) await ctx.db.delete(lc._id);
       await ctx.db.delete(args.userId);
     }
 
@@ -65,6 +67,7 @@ export const purgeUserData = internalMutation({
       schedulesDeleted: schedules.length,
       userPrefsDeleted: userPrefs.length,
       pendingClaimsDeleted: pendingClaims.length,
+      licenseClaimsDeleted: licenseClaims.length,
       userRowDeleted: !args.dryRun,
     };
   },

@@ -618,8 +618,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'SET_PRO_STATUS':
-      handleSetProStatus(message, sendResponse);
-      return true;
+      // C5: removed. This was a developer switch that any page or extension
+      // able to message us could use to turn Pro on without paying. Pro now
+      // comes only from ACTIVATE_LICENSE / VALIDATE_LICENSE.
+      sendResponse({ success: false, error: 'REMOVED' });
+      return false;
 
     case 'GET_PRO_STATUS':
       handleGetProStatus(sendResponse);
@@ -795,6 +798,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'GET_SYNC_STATUS':
       handleGetSyncStatus(sendResponse);
+      return true;
+
+    // ── Link this browser (C1b). Logic lives in lib/sync-manager.js. ──
+    case 'GET_LINK_INFO':
+      handleGetLinkInfo(message, sendResponse);
+      return true;
+
+    case 'GET_LINK_CODE':
+      handleGetLinkCode(sender, sendResponse);
+      return true;
+
+    case 'LINK_BROWSER':
+      handleLinkBrowser(message, sender, sendResponse);
       return true;
 
     case 'HASH_PHONE':
@@ -1142,26 +1158,6 @@ async function handleClearAll(sendResponse) {
   }
 }
 
-// Set Pro status (for developer testing)
-async function handleSetProStatus(message, sendResponse) {
-  try {
-    const isPro = await withLock(async () => {
-      const result = await swGet('state');
-      const state = result.state || getDefaultState();
-      state.meta.isPro = !!message.isPro;
-      await swSet({ state });
-      return state.meta.isPro;
-    });
-
-    sendResponse({
-      success: true,
-      isPro
-    });
-
-  } catch (error) {
-    sendResponse({ success: false, error: error.message });
-  }
-}
 
 // Get Pro status
 async function handleGetProStatus(sendResponse) {
@@ -1628,6 +1624,41 @@ async function handleGetRemotePhotosBatch(message, sendResponse) {
 }
 
 // Get sync status for popup display
+// ── Link this browser (C1b) ──────────────────────────────────────────────────
+// Thin wrappers; see getLinkInfo / getLinkCode / linkWithCode in
+// lib/sync-manager.js. The two that touch the link code answer the extension's
+// own pages only (the popup has no `sender.tab`); a content script running
+// inside a web page is refused.
+async function handleGetLinkInfo(message, sendResponse) {
+  await _syncInitPromise;
+  try {
+    const info = await SyncManager.getLinkInfo({ refresh: !!(message && message.refresh) });
+    sendResponse({ success: true, ...info });
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleGetLinkCode(sender, sendResponse) {
+  if (sender && sender.tab) { sendResponse({ success: false, error: 'NOT_ALLOWED' }); return; }
+  await _syncInitPromise;
+  try {
+    sendResponse(await SyncManager.getLinkCode());
+  } catch (error) {
+    sendResponse({ success: false, error: 'NO_CODE_HERE' });
+  }
+}
+
+async function handleLinkBrowser(message, sender, sendResponse) {
+  if (sender && sender.tab) { sendResponse({ success: false, error: 'NOT_ALLOWED' }); return; }
+  await _syncInitPromise;
+  try {
+    sendResponse(await SyncManager.linkWithCode(message && message.code));
+  } catch (error) {
+    sendResponse({ success: false, error: 'NETWORK' });
+  }
+}
+
 async function handleGetSyncStatus(sendResponse) {
   // MUST await init before reading SyncManager state.
   // Without this, a popup opened immediately after a hard refresh would call
@@ -1730,6 +1761,33 @@ async function handleFetchImageAsDataUrl(message, sendResponse) {
 
 // ===================== PAYMENT / LICENSE IMPLEMENTATIONS =====================
 
+// C5: the server's answers that mean "this key does not give Pro", and what
+// the user is told. Any other answer (or none) leaves the decision to the
+// checks the extension already makes.
+const LICENSE_REFUSALS = {
+  invalid: 'This license key is not valid.',
+  wrong_product: 'This license key is not for DualProfile Pro.',
+  too_many_accounts: 'This license key is already in use on the maximum number of accounts. Deactivate it on one of them first.',
+};
+// How long a server "yes" is trusted before the background re-check asks again.
+const LICENSE_SERVER_RECHECK_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * C5: ask our server to verify the key with Lemon Squeezy and record Pro on
+ * the account (convex/licenses.ts). Returns the server's status string, or
+ * null when the server could not answer: sync off, offline, or a backend
+ * deployed before licenses.ts existed.
+ */
+async function verifyLicenseOnServer(licenseKey) {
+  if (!DualProfileConfig.isSyncEnabled()) return null;
+  try {
+    const res = await ConvexHTTP.action('licenses:verify', { licenseKey });
+    return res && typeof res.status === 'string' ? res.status : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Activate a license key: validate with Lemon Squeezy, activate, and set Pro status.
  */
@@ -1753,6 +1811,17 @@ async function handleActivateLicense(message, sendResponse) {
     const validateResult = await LemonSqueezyClient.validateLicense(licenseKey);
     if (!validateResult.valid) {
       sendResponse({ success: false, error: validateResult.error || 'Validation failed after activation' });
+      return;
+    }
+
+    // Step 2b (C5): our server asks Lemon Squeezy as well and records Pro on
+    // the account. A "no" from the server wins.
+    const serverVerdict = await verifyLicenseOnServer(licenseKey);
+    if (LICENSE_REFUSALS[serverVerdict]) {
+      if (activateResult.instanceId) {
+        try { await LemonSqueezyClient.deactivateLicense(licenseKey, activateResult.instanceId); } catch (e) {}
+      }
+      sendResponse({ success: false, error: LICENSE_REFUSALS[serverVerdict], reason: serverVerdict });
       return;
     }
 
@@ -1785,7 +1854,8 @@ async function handleActivateLicense(message, sendResponse) {
           customerEmail: validateResult.meta?.customerEmail || null,
           status: 'active',
           isLifetime: isLifetimeLicense,
-          isAnnual: isAnnualLicense
+          isAnnual: isAnnualLicense,
+          serverCheckedAt: (serverVerdict === 'pro' || serverVerdict === 'founder') ? Date.now() : null
         }
       });
     });
@@ -1832,7 +1902,17 @@ async function handleValidateLicense(sendResponse) {
 
     const result = await LemonSqueezyClient.validateLicense(license.key);
 
-    if (!result.valid) {
+    // C5: the server re-checks too, at most every LICENSE_SERVER_RECHECK_MS
+    // after it last said yes. A "no" from it revokes Pro like an invalid key.
+    let serverVerdict = null;
+    const serverFresh = license.serverCheckedAt &&
+      Date.now() - license.serverCheckedAt < LICENSE_SERVER_RECHECK_MS;
+    if (result.valid && !serverFresh) {
+      serverVerdict = await verifyLicenseOnServer(license.key);
+    }
+    const serverRefusal = LICENSE_REFUSALS[serverVerdict];
+
+    if (!result.valid || serverRefusal) {
       // License no longer valid - revoke all tier flags, not just isPro.
       // tier-system.js checks isLifetime/isAnnual before isPro, so leaving
       // those stale would let a lapsed license keep full access forever.
@@ -1848,8 +1928,17 @@ async function handleValidateLicense(sendResponse) {
         });
       });
 
-      sendResponse({ success: true, valid: false, reason: result.error });
+      sendResponse({ success: true, valid: false, reason: serverRefusal || result.error });
       return;
+    }
+
+    if (serverVerdict === 'pro' || serverVerdict === 'founder') {
+      await withLock(async () => {
+        const cur = await swGet('license');
+        if (cur.license && cur.license.key === license.key) {
+          await swSet({ license: { ...cur.license, serverCheckedAt: Date.now() } });
+        }
+      });
     }
 
     // License is still valid — restore isLifetime/isAnnual flags from stored license
@@ -1925,6 +2014,12 @@ async function handleDeactivateLicense(sendResponse) {
 
     if (license?.key && license?.instanceId) {
       await LemonSqueezyClient.deactivateLicense(license.key, license.instanceId);
+    }
+
+    // C5: free this account's place on the key on the server too. Best
+    // effort: an older backend or no connection must not block deactivation.
+    if (license?.key && DualProfileConfig.isSyncEnabled()) {
+      try { await ConvexHTTP.action('licenses:release', { licenseKey: license.key }); } catch (e) {}
     }
 
     // Revoke Pro status

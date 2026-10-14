@@ -16,6 +16,7 @@ import type * as cloudinaryActions from "../cloudinaryActions.js";
 import type * as cloudinaryMutations from "../cloudinaryMutations.js";
 import type * as cloudinaryOrphanQueries from "../cloudinaryOrphanQueries.js";
 import type * as cloudinaryOrphanReport from "../cloudinaryOrphanReport.js";
+import type * as licenses from "../licenses.js";
 import type * as migrations from "../migrations.js";
 import type * as photos from "../photos.js";
 import type * as scheduleWindow from "../scheduleWindow.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   cloudinaryMutations: typeof cloudinaryMutations;
   cloudinaryOrphanQueries: typeof cloudinaryOrphanQueries;
   cloudinaryOrphanReport: typeof cloudinaryOrphanReport;
+  licenses: typeof licenses;
   migrations: typeof migrations;
   photos: typeof photos;
   scheduleWindow: typeof scheduleWindow;

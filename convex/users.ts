@@ -1,6 +1,12 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { authArgs, requireUser, requireUserAndTouch } from "./auth";
+import {
+  authArgs,
+  mayLinkDevice,
+  recordRefusedClaim,
+  requireUser,
+  requireUserAndTouch,
+} from "./auth";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUG FOUND WHILE WRITING C1 — read this before you deploy.
@@ -29,11 +35,25 @@ const MAX_BATCH_HASHES = 100;
 // The only unauthenticated mutation in the codebase. It must stay that way —
 // it is the bootstrap. It takes a client-computed tokenHash and never sees the
 // token itself.
+//
+// C1b: a phone hash in the arguments is a CLAIM, not a credential. The caller
+// joins the account that holds that number only if mayLinkDevice (auth.ts)
+// agrees. Otherwise they get a separate account that does NOT carry the
+// number, so there is never a second account answering to one phone, and the
+// attempt is recorded in pendingClaims.
+//
+// Result: { userId, phoneClaim } where phoneClaim is
+//   "none"             no phone hash was sent
+//   "attached"         the caller's account holds the number
+//   "already_claimed"  another account holds it and the caller did not prove
+//                      they belong to that account
+// Older extension builds read only `userId`, which keeps its meaning.
 export const registerDevice = mutation({
   args: {
     installId: v.string(),
     tokenHash: v.string(),
     phoneHash: v.optional(v.string()),
+    recoveryKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.installId.length < 8 || args.installId.length > 64) {
@@ -56,23 +76,51 @@ export const registerDevice = mutation({
     // Resolve or create the user this device belongs to.
     let userId = null as any;
 
-    if (args.phoneHash) {
-      const byPhone = await ctx.db
-        .query("users")
-        .withIndex("by_phone_hash", (q) => q.eq("phoneHash", args.phoneHash))
-        .first();
-      if (byPhone) userId = byPhone._id;
-    }
+    // The account that currently answers to the claimed number, if any, and
+    // whether this caller has shown they belong to it.
+    const phoneHolder = args.phoneHash
+      ? await ctx.db
+          .query("users")
+          .withIndex("by_phone_hash", (q) => q.eq("phoneHash", args.phoneHash))
+          .first()
+      : null;
+    const linkAllowed = phoneHolder
+      ? await mayLinkDevice(ctx, phoneHolder, args.recoveryKey)
+      : false;
+
+    if (phoneHolder && linkAllowed) userId = phoneHolder._id;
 
     if (!userId) {
-      const byInstall = await ctx.db
-        .query("users")
-        .withIndex("by_install_id", (q) => q.eq("installId", args.installId))
-        .first();
-      if (byInstall) {
-        userId = byInstall._id;
-        if (args.phoneHash && byInstall.phoneHash !== args.phoneHash) {
-          await ctx.db.patch(byInstall._id, { phoneHash: args.phoneHash });
+      // Same install coming back (DeviceAuth.reset() keeps installId and mints
+      // a new token). installId is a random UUID known only to that browser,
+      // so it identifies the returning browser without any phone claim.
+      //
+      // Look first at the device rows: a browser that was merged into another
+      // account by attachPhone no longer matches users.installId, but its
+      // device row still points at the account it belongs to. Signed-out
+      // (revoked) rows are ignored. Then fall back to the account this install
+      // originally created.
+      const priorDevices = (
+        await ctx.db
+          .query("devices")
+          .withIndex("by_install_id", (q) => q.eq("installId", args.installId))
+          .collect()
+      )
+        .filter((d) => !d.revokedAt)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      let own = priorDevices.length ? await ctx.db.get(priorDevices[0].userId) : null;
+      if (!own) {
+        own = await ctx.db
+          .query("users")
+          .withIndex("by_install_id", (q) => q.eq("installId", args.installId))
+          .first();
+      }
+      if (own) {
+        userId = own._id;
+        // Take the claimed number only if nobody else holds it. Patching it on
+        // regardless would create a second account for one phone.
+        if (args.phoneHash && own.phoneHash !== args.phoneHash && !phoneHolder) {
+          await ctx.db.patch(own._id, { phoneHash: args.phoneHash });
         }
       }
     }
@@ -80,32 +128,21 @@ export const registerDevice = mutation({
     if (!userId) {
       userId = await ctx.db.insert("users", {
         installId: args.installId,
-        phoneHash: args.phoneHash,
+        // A refused claim must not put the number on the new account.
+        phoneHash: phoneHolder ? undefined : args.phoneHash,
         tier: "free",
         createdAt: Date.now(),
       });
     }
 
-    // ── Residual risk, recorded rather than hidden ──────────────────────────
-    // We are attaching a device to an account identified only by a phone hash
-    // the caller asserted. Without phone verification, anyone who knows a
-    // number can do this. C1 does not close that; C1b (OTP) does. Until then,
-    // log every claim against an account that already has a live device so the
-    // exposure is measurable rather than invisible.
-    const existingDevices = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-    const liveDevices = existingDevices.filter((d) => !d.revokedAt);
-
-    if (liveDevices.length > 0 && args.phoneHash) {
-      await ctx.db.insert("pendingClaims", {
-        userId,
-        phoneHash: args.phoneHash,
-        installId: args.installId,
-        claimedAt: Date.now(),
-        deviceCount: liveDevices.length,
-      });
+    let phoneClaim: "none" | "attached" | "already_claimed" = "none";
+    if (args.phoneHash) {
+      if (!phoneHolder || phoneHolder._id === userId) {
+        phoneClaim = "attached";
+      } else {
+        phoneClaim = "already_claimed";
+        await recordRefusedClaim(ctx, phoneHolder, args.phoneHash, args.installId);
+      }
     }
 
     const now = Date.now();
@@ -117,20 +154,29 @@ export const registerDevice = mutation({
       lastSeenAt: now,
     });
 
-    return { userId };
+    return { userId, phoneClaim };
   },
 });
 
 // ── attachPhone ──────────────────────────────────────────────────────────────
 // Authenticated. Sets or updates the phone hash on the caller's own record.
+//
+// C1b: if another account already holds the number, the caller is moved onto
+// that account only when mayLinkDevice (auth.ts) agrees. Otherwise nothing
+// changes, the attempt is recorded, and the result says so.
+//
+// Result: { userId, status } where status is "attached" or "already_claimed".
+// Older extension builds read only `userId`.
 export const attachPhone = mutation({
-  args: { ...authArgs, phoneHash: v.string() },
+  args: { ...authArgs, phoneHash: v.string(), recoveryKey: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const { user, device } = await requireUserAndTouch(ctx, args.deviceToken);
     if (!/^[0-9a-f]{64}$/.test(args.phoneHash)) {
       throw new Error("INVALID_PHONE_HASH");
     }
-    if (user.phoneHash === args.phoneHash) return { userId: user._id };
+    if (user.phoneHash === args.phoneHash) {
+      return { userId: user._id, status: "attached" as const };
+    }
 
     // FIX (duplicate-account bug, round 2): a device can register BEFORE its
     // phone number is known — e.g. a fresh install, or a reset/re-registration
@@ -154,6 +200,13 @@ export const attachPhone = mutation({
       .first();
 
     if (existing && existing._id !== user._id) {
+      // C1b: the number belongs to someone else's account unless the caller
+      // proves otherwise. Leave the caller exactly where they are.
+      if (!(await mayLinkDevice(ctx, existing, args.recoveryKey))) {
+        await recordRefusedClaim(ctx, existing, args.phoneHash, device.installId);
+        return { userId: user._id, status: "already_claimed" as const };
+      }
+
       const [staleAssignments, stalePhotos] = await Promise.all([
         ctx.db.query("assignments").withIndex("by_user", (q) => q.eq("userId", user._id)).collect(),
         ctx.db.query("photos").withIndex("by_user", (q) => q.eq("userId", user._id)).collect(),
@@ -194,11 +247,42 @@ export const attachPhone = mutation({
       await ctx.db.patch(device._id, { userId: existing._id });
       await ctx.db.delete(user._id);
 
-      return { userId: existing._id };
+      return { userId: existing._id, status: "attached" as const };
     }
 
     await ctx.db.patch(user._id, { phoneHash: args.phoneHash });
-    return { userId: user._id };
+    return { userId: user._id, status: "attached" as const };
+  },
+});
+
+// ── setRecoveryKey ───────────────────────────────────────────────────────────
+// Authenticated. Registers the hash of this account's recovery key. The key is
+// generated in the browser (lib/device-auth.js) and never sent here until a
+// later device presents it to join the account.
+//
+// Set-once: if the account already has a key, a different hash does NOT replace
+// it. Otherwise any signed-in device could silently lock the others out of
+// recovery. Status tells the caller which case it hit:
+//   "set"          this hash is now the account's key
+//   "unchanged"    the account already had exactly this hash
+//   "already_set"  the account has a different key; the caller should not keep
+//                  the one it generated
+export const setRecoveryKey = mutation({
+  args: { ...authArgs, recoveryHash: v.string() },
+  handler: async (ctx, args) => {
+    const { user } = await requireUserAndTouch(ctx, args.deviceToken);
+    if (!/^[0-9a-f]{64}$/.test(args.recoveryHash)) {
+      throw new Error("INVALID_RECOVERY_HASH");
+    }
+    if (user.recoveryHash) {
+      return {
+        status: user.recoveryHash === args.recoveryHash
+          ? ("unchanged" as const)
+          : ("already_set" as const),
+      };
+    }
+    await ctx.db.patch(user._id, { recoveryHash: args.recoveryHash });
+    return { status: "set" as const };
   },
 });
 

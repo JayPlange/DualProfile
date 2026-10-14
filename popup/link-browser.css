@@ -1,0 +1,107 @@
+/* DualProfile — "Link this browser" section (Settings). See link-browser.js.
+   Uses the popup's own variables, so it follows the light and dark themes. */
+
+.link-group[hidden],
+.link-group [hidden] {
+  display: none !important;
+}
+
+.link-card {
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.link-alert {
+  margin-bottom: var(--spacing-md);
+  padding: 10px var(--spacing-md);
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: rgba(247, 201, 72, 0.1);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.link-desc {
+  margin: 0 0 var(--spacing-md) 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.link-group[data-link-state="foreign"] .link-desc,
+.link-group[data-link-state="pending"] .link-desc {
+  margin-bottom: 0;
+}
+
+.link-code-box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding: 10px var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.link-code {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  word-spacing: 2px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.link-code-box .btn-primary {
+  flex: none;
+  padding: 8px 14px;
+}
+
+.link-warning {
+  margin: var(--spacing-sm) 0 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.link-code-input {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--spacing-md);
+  padding: 10px var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.link-code-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.link-status {
+  margin-top: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.link-status-success { color: var(--success); }
+.link-status-error { color: var(--danger); }
+
+[data-theme="light"] .link-status-success { color: #00875a; }
+[data-theme="light"] .link-alert { background: rgba(247, 201, 72, 0.18); border-color: #c99a06; }

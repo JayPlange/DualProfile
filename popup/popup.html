@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="popup.css">
   <link rel="stylesheet" href="onboarding.css">
+  <link rel="stylesheet" href="link-browser.css">
 </head>
 <body>
   <!-- Dev Mode Banner (shown when testing) -->
@@ -359,6 +360,36 @@
         </div>
       </div>
 
+      <!-- Link this browser (C1b). Drawn and translated by link-browser.js;
+           hidden until a phone number is saved. No data-i18n here on purpose:
+           these strings live in link-browser.js, not in onboarding.js. -->
+      <div class="settings-group link-group" id="linkBrowserSection" hidden>
+        <h3 id="linkTitle">Link another browser</h3>
+        <div class="link-card">
+          <div class="link-alert" id="linkAlert" role="alert" hidden></div>
+          <p class="link-desc" id="linkDesc"></p>
+
+          <!-- This browser holds the account's code and can show it -->
+          <div id="linkShowBlock" hidden>
+            <button type="button" class="btn-secondary" id="linkShowBtn">Show link code</button>
+            <div class="link-code-box" id="linkCodeBox" hidden>
+              <code class="link-code" id="linkCodeText"></code>
+              <button type="button" class="btn-primary" id="linkCopyBtn">Copy</button>
+            </div>
+            <p class="link-warning" id="linkWarning" hidden></p>
+          </div>
+
+          <!-- This browser needs a code from another one -->
+          <div id="linkEnterBlock" hidden>
+            <label class="phone-input-label" for="linkCodeInput" id="linkInputLabel">Link code</label>
+            <textarea id="linkCodeInput" class="link-code-input" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+            <button type="button" class="btn-primary" id="linkSubmitBtn">Link this browser</button>
+          </div>
+
+          <div class="link-status" id="linkStatus" role="status" hidden></div>
+        </div>
+      </div>
+
       <div class="settings-group">
         <h3 data-i18n="settings_appearance">Appearance</h3>
         <div class="setting-item">
@@ -598,6 +629,8 @@
   <script src="../lib/storage.js"></script>
   <script src="onboarding.js"></script>
   <script src="popup.js"></script>
+  <!-- Link this browser (C1b): self-contained, see the file header -->
+  <script src="link-browser.js"></script>
   <!-- World Cup 2026 daily theme — purely cosmetic, zero impact on functionality -->
   <script src="worldcupTheme.js"></script>
 </body>
