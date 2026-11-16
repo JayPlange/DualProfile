@@ -4,7 +4,7 @@
 > Live on the Chrome Web Store · Built solo · Real users · Paid tiers
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Live-brightgreen?style=flat&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/dualprofile/mdlhdncmaeepcejdbpnjpjlmagmmpkpc)
-[![Version](https://img.shields.io/badge/version-1.0.20-blue?style=flat)]()
+[![Version](https://img.shields.io/badge/live%20version-1.0.39-blue?style=flat)]()
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-orange?style=flat)]()
 
 ---
@@ -75,11 +75,9 @@ DualProfile is a Chrome Extension built with Manifest V3. It combines local brow
 | Pro | £9.99 one-time | Unlimited contacts and premium features |
 
 Pro includes:
-- Photo History and Revert
-- Bulk Assignment
-- Scheduled Photos
-- Export and Import
-- Multi-Device Sync
+- Photo History with one-click restore
+- Bulk Contact Assignment
+- Export and Import Settings
 - Priority Support
 
 **Pricing evolution:** The product originally had four tiers. After reviewing conversion behaviour, I consolidated the offering into Free and Pro, and reduced Pro from £29 to £9.99. I reused the existing Lemon Squeezy Lifetime variant to preserve webhook mappings and existing customer entitlements. Annual and Lifetime remain as legacy tier values for previous buyers, who retain their Pro-equivalent access.
@@ -96,7 +94,7 @@ Feature access is enforced individually through backend checks rather than relyi
 
 ## Status
 
-DualProfile is a live Chrome Web Store extension, currently at v1.0.20.
+The live Chrome Web Store release is v1.0.39, updated November 12, 2026.
 
 - **Scheduled Photos:** Available as a core product feature.
 - **Per-Contact Photos:** Experimental P2P functionality for participating DualProfile users on WhatsApp Web.
