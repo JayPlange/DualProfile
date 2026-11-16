@@ -1,6 +1,6 @@
-# DualProfile — Chrome Extension
+# DualProfile — WhatsApp Profile Photo Manager
 
-> **Show different profile photos to different contacts on WhatsApp Web.**  
+> Manage your WhatsApp profile photo with scheduled changes that require your approval. Also includes an experimental Per-Contact Photos feature for participating DualProfile users on WhatsApp Web.
 > Live on the Chrome Web Store · Built solo · Real users · Paid tiers
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Live-brightgreen?style=flat&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/dualprofile/mdlhdncmaeepcejdbpnjpjlmagmmpkpc)
@@ -11,101 +11,97 @@
 
 ## What It Does
 
-DualProfile lets you upload two profile photos and assign them per-contact on WhatsApp Web. Your colleague sees your professional headshot. Your family sees your personal photo. The switch is invisible — it happens live as the chat header loads.
+DualProfile gives you more control over your WhatsApp profile photo.
 
-The core mechanic is a real-time P2P query: when you open a conversation, the extension hits Convex to check whether the person you're chatting with has assigned you a specific photo. If yes, that photo is injected into the DOM before it renders. If no, WhatsApp's default loads as normal.
+**Scheduled Photos**
 
----
+Schedule changes to your actual WhatsApp profile photo. Each scheduled change requires your approval before it happens. The updated photo is then visible to all your WhatsApp contacts, including people using mobile.
+
+**Per-Contact Photos (Experimental)**
+
+Assign different profile photos to individual DualProfile users. When two participating users have the extension installed, each can see the photo assigned to them when viewing the other's chat on WhatsApp Web. This feature uses a peer-to-peer assignment system backed by Convex.
+
+Scheduled Photos works without requiring your contacts to install DualProfile. Per-Contact Photos requires both participants to use the extension and currently works on WhatsApp Web.
 
 ## Architecture
 
-```
-Chrome Extension (MV3)
-├── content/
-│   ├── content.js                   # MutationObserver, DOM injection, chat-switch handling
-│   ├── content.css                  # Injected UI styling
-│   └── notification-interceptor.js  # Intercepts WA notification thumbnails
-├── background/
-│   └── service-worker.js            # chrome.alarms reconciliation loop, Convex + tier polling
-├── popup/
-│   ├── popup.html / popup.js / popup.css   # Main UI — photo upload, contacts, settings
-│   ├── onboarding.js / onboarding.css      # First-run flow, phone capture, 9-language i18n
-│   └── worldcupTheme.js                    # Seasonal cosmetic theme (zero functional impact)
-├── lib/
-│   ├── tier-system.js               # Free / Pro / Annual / Lifetime feature flags
-│   ├── config.js                    # Lemon Squeezy checkout URLs, feature toggles
-│   ├── storage.js / sync-manager.js # Local + Convex sync
-│   ├── convex-http.js / convex-sync.js
-│   ├── cloudinary-client.js         # Photo upload
-│   ├── crypto-utils.js              # Phone number hashing
-│   └── lemonsqueezy-client.js
-├── convex/
-│   ├── schema.ts                    # users, photos, assignments, schedules, userPrefs tables
-│   ├── users.ts                     # registerUser (phoneHash-first lookup)
-│   ├── photos.ts                    # Photo upload/delete via Cloudinary
-│   ├── assignments.ts               # assignContact, getPhotoForViewer (core P2P query)
-│   └── schedules.ts                 # Scheduled Photos (Annual+)
-└── manifest.json                    # MV3, service worker, content script config
-```
+DualProfile is a Chrome Extension built with Manifest V3. It combines local browser functionality with a Convex backend for synchronisation, scheduling, and Per-Contact Photos.
 
-**Backend:** [Convex](https://convex.dev) — real-time serverless backend. All assignment data and user records live here. The `getPhotoForViewer` query is the heart of the P2P system.
+**Extension**
+- Content scripts handle WhatsApp Web integration, profile photo updates, DOM observation, and chat-switch handling.
+- Background service worker handles scheduled tasks, reconciliation, and tier synchronisation.
+- Popup provides settings, onboarding, photo management, and subscription controls.
+- Vanilla JavaScript, HTML, and CSS. No extension build step.
 
-**Storage:** [Cloudinary](https://cloudinary.com) — photos are uploaded directly and served via CDN URL stored in Convex.
+**Backend and Services**
+- **Convex:** User records, photo assignments, scheduled changes, and backend operations.
+- **Cloudinary:** Photo storage and delivery.
+- **Lemon Squeezy:** Payment processing and subscription entitlements.
 
-**Payments:** [Lemon Squeezy](https://lemonsqueezy.com) — handles Free / Pro / Annual / Lifetime tiers.
-
-The popup UI is plain HTML/CSS/JS (no build step) so the unpacked extension can be loaded directly for review or development. The [landing page](https://vivaup.org) is a separate Next.js/React project — see [`dualprofile-landing`](https://github.com/JayPlange/dualprofile-landing).
-
----
+**Landing Page**
+- Separate Next.js application built with React, TypeScript, and Tailwind CSS.
 
 ## Key Engineering Decisions
 
-**`phoneHash` as primary key, not `extensionId`**  
-Chrome and Edge on the same machine share the same `extensionId`. Using it as the unique user key meant both browsers shared one Convex record, causing one device to overwrite the other's phone hash and silently breaking all P2P lookups. The fix: `phoneHash` (SHA-256 of the user's phone number) is the primary key. `extensionId` is a fallback for fresh installs before phone registration.
+- **Phone-based identity:** Uses a SHA-256 hash of the phone number as the primary user key instead of relying on the extension ID. Chrome and Edge can share an extension ID on the same machine, which previously caused identity collisions and failed Per-Contact Photos lookups. The extension ID is retained as a fallback before phone registration.
 
-**MutationObserver + reconciliation loop**  
-WhatsApp Web is a heavily dynamic React SPA. A simple `DOMContentLoaded` hook doesn't work — headers re-render on navigation, contact switches, and reconnects. The solution: a `MutationObserver` that watches for chat header mutations, plus a `chrome.alarms`-driven 500ms reconciliation loop to catch anything the observer misses.
+- **WhatsApp Web reconciliation:** WhatsApp is a React single-page application, so its interface changes dynamically. A MutationObserver detects DOM changes, while a background reconciliation loop checks for missed updates.
 
-**Self-row guard**  
-Early builds leaked the assigner's own photo across contacts when switching chats rapidly. The fix was an explicit self-row guard — the extension checks whether the contact being rendered is the logged-in user and skips injection if so.
+- **Contact-switch protection:** A self-row guard prevents a user's own photo from leaking into another contact's conversation during rapid chat switching.
 
-**Per-feature tier gating, not per-plan**  
-Rather than a single "isPro" flag, `lib/tier-system.js` exposes individual flags (`bulkAssign`, `photoHistory`, `schedule`, `exportImport`, `multiDevice`, `priority`) per tier. This keeps the Free/Pro/Annual/Lifetime feature split enforced in one place and avoids the UI and backend disagreeing about what a given tier includes.
+- **Backend-enforced permissions:** Feature entitlements are checked per feature, not through a single `isPro` flag. Assignment permissions are enforced inside the Convex mutation that writes the assignment, rather than relying on client-side checks alone.
 
----
+- **Scheduled changes:** Scheduled Photos uses background scheduling and reconciliation to manage pending photo changes, with user approval required before each change is applied.
 
 ## Tech Stack
 
-| Layer | Tech |
+| Layer | Technology |
 |---|---|
-| Extension | Manifest V3, Service Worker, Content Scripts, vanilla JS/HTML/CSS |
-| Backend | Convex (real-time serverless) |
-| Storage | Cloudinary |
+| Browser Extension | Chrome Extension Manifest V3 |
+| Extension Frontend | Vanilla JavaScript, HTML, CSS |
+| Background Processing | Chrome Service Worker, chrome.alarms |
+| DOM Integration | MutationObserver |
+| Backend | Convex |
+| Photo Storage | Cloudinary |
 | Payments | Lemon Squeezy |
-| Landing page | Next.js, React, TypeScript, TailwindCSS ([separate repo](https://github.com/JayPlange/dualprofile-landing)) |
-
----
+| Landing Page | Next.js, React, TypeScript, Tailwind CSS |
+| Identity & Security | SHA-256 phone hashing, backend-enforced feature permissions |
 
 ## Tiers
 
-| Tier | Contacts | Price | Includes |
-|---|---|---|---|
-| Free | 1 | £0 | Manual assignment |
-| Pro | Unlimited | £9.99 one-time | Photo History & Revert, Bulk Assignment, Scheduled Photos, Export/Import, Multi-Device Sync, Priority Support |
+| Tier | Price | Access |
+|---|---:|---|
+| Free | £0 | One contact, manual Per-Contact Photo assignment |
+| Pro | £9.99 one-time | Unlimited contacts and premium features |
 
-Collapsed from an earlier four-tier structure (Free/Pro/Annual/Lifetime) after data showed the middle tiers weren't converting. Pro was repriced from £29 to £9.99, reusing the existing Lemon Squeezy Lifetime variant rather than creating a new one, so the webhook mapping and existing customers' entitlement stayed untouched. Annual and Lifetime are no longer sold, but kept as legacy values in `lib/tier-system.js` — anyone who bought one previously keeps full (Pro-equivalent) access. Enforcement is per-feature, not per-plan, and happens in the same Convex mutation that writes the assignment, not the client.
+Pro includes:
+- Photo History and Revert
+- Bulk Assignment
+- Scheduled Photos
+- Export and Import
+- Multi-Device Sync
+- Priority Support
 
----
+**Pricing evolution:** The product originally had four tiers. After reviewing conversion behaviour, I consolidated the offering into Free and Pro, and reduced Pro from £29 to £9.99. I reused the existing Lemon Squeezy Lifetime variant to preserve webhook mappings and existing customer entitlements. Annual and Lifetime remain as legacy tier values for previous buyers, who retain their Pro-equivalent access.
+
+Feature access is enforced individually through backend checks rather than relying solely on client-side tier flags.
 
 ## Links
 
 - 🔗 [Landing page](https://vivaup.org)
 - 🛒 [Chrome Web Store](https://chromewebstore.google.com/detail/dualprofile/mdlhdncmaeepcejdbpnjpjlmagmmpkpc)
-- 🎥 [Demo video](https://x.com/JusticePlange/status/1917779218467021129)
+- 🎥 [Watch DualProfile in action](https://x.com/JusticePlange/status/1917779218467021129)
 
 ---
 
 ## Status
 
-Production. v1.0.20. Actively maintained.
+DualProfile is a live Chrome Web Store extension, currently at v1.0.20.
+
+- **Scheduled Photos:** Available as a core product feature.
+- **Per-Contact Photos:** Experimental P2P functionality for participating DualProfile users on WhatsApp Web.
+- **Business model:** Free and one-time Pro purchase tiers.
+- **Distribution:** Live on the Chrome Web Store, with users across multiple countries.
+
+The extension is actively maintained.
 
