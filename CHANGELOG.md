@@ -1,3 +1,6 @@
+## v1.0.40 - 2026-11-18
+- Updated Chrome Web Store summary to better describe scheduled WhatsApp profile photos.
+- No functionality changes.
 ## v1.0.37 - 2026-10-04
 - **Scheduled photos, Chrome:** "Switch now" now reaches the profile editor on personal accounts. They have no `navbar-item-profile-photo` testid; the nav footer's last button opens a settings list whose first row (`li-profile`) opens the editor.
 - **Scheduled photos, Business:** the photo now goes to the avatar, not the cover. The editor holds two file inputs with the same accept list; the one nearest the avatar picker is used.
